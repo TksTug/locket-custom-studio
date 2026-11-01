@@ -553,14 +553,20 @@ def preview():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/api/upload", methods=["POST"])
 @app.route("/api/post", methods=["POST"])
 def post_moment():
     if not client.is_authenticated():
         return jsonify({"success": False, "error": "Bạn cần đăng nhập tài khoản Locket trước!"}), 401
 
     try:
-        image_file = request.files.get("image")
+        image_file = request.files.get("image") or request.files.get("file")
         video_file = request.files.get("video")
+
+        uploaded = request.files.get("file")
+        if uploaded and uploaded.content_type and ("video" in uploaded.content_type or uploaded.filename.endswith((".mp4", ".mov", ".m4v"))):
+            video_file = uploaded
+            image_file = None
 
         if not image_file and not video_file:
             return jsonify({"success": False, "error": "Vui lòng chọn ảnh hoặc video để đăng!"}), 400
