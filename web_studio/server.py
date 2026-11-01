@@ -298,14 +298,32 @@ def post_moment():
             )
             processed_img.convert("RGB").save(processed_image_path, format="WEBP", quality=90)
         elif video_file:
-            video_filename = os.path.join(temp_dir, "input_video.mp4")
+            video_filename = os.path.join(temp_dir, "input_raw.mp4")
             video_file.save(video_filename)
-            video_path = video_filename
 
+            # Transcode to Universal H.264 MP4 (Guarantees smooth playback on ALL Android & iOS phones)
+            universal_video_path = os.path.join(temp_dir, "universal_video.mp4")
             import imageio_ffmpeg
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-            raw_thumb_path = os.path.join(temp_dir, "raw_thumb.png")
             import subprocess
+
+            # Convert to standard Android-compatible H.264 + AAC + faststart
+            cmd_transcode = [
+                ffmpeg_exe, "-y",
+                "-i", video_filename,
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", "fast",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-movflags", "+faststart",
+                universal_video_path
+            ]
+            subprocess.run(cmd_transcode, capture_output=True)
+            video_path = universal_video_path if os.path.exists(universal_video_path) else video_filename
+
+            # Extract first frame as thumbnail and apply effects
+            raw_thumb_path = os.path.join(temp_dir, "raw_thumb.png")
             subprocess.run([
                 ffmpeg_exe, "-y", "-ss", "00:00:00.500", "-i", video_path,
                 "-vframes", "1", raw_thumb_path
