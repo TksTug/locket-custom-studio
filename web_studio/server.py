@@ -187,6 +187,144 @@ def list_friends():
         traceback.print_exc()
         return jsonify({"friends": [], "error": str(e)})
 
+# ==========================================
+# FEED (XEM BẠN BÈ ĐĂNG GÌ)
+# ==========================================
+@app.route("/api/feed", methods=["GET"])
+def get_feed():
+    if not client.is_authenticated():
+        return jsonify({"feed": []})
+
+    try:
+        moments = client.moments.get_latest()
+        # Create map of friends for fast profile lookup
+        friend_map = {f["uid"]: f for f in FRIENDS_CACHE.get("friends", [])}
+        feed_items = []
+
+        for m in moments:
+            author_uid = m.get("user")
+            author = friend_map.get(author_uid)
+            if not author and author_uid:
+                try:
+                    p = client.user.get_profile(author_uid)
+                    author = {
+                        "uid": author_uid,
+                        "first_name": p.get("first_name", "Bạn Locket"),
+                        "last_name": p.get("last_name", ""),
+                        "username": p.get("username", ""),
+                        "profile_picture": p.get("profile_picture_url")
+                    }
+                except Exception:
+                    author = {"uid": author_uid, "first_name": "Bạn Locket", "username": "locket"}
+
+            feed_items.append({
+                "moment_uid": m.get("canonical_uid") or m.get("id"),
+                "thumbnail_url": m.get("thumbnail_url"),
+                "video_url": m.get("video_url"),
+                "caption": m.get("caption", ""),
+                "date": m.get("date"),
+                "author": author or {"first_name": "Bạn bè", "username": "locket"}
+            })
+
+        return jsonify({"feed": feed_items})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"feed": [], "error": str(e)})
+
+@app.route("/api/moments/react", methods=["POST"])
+def react_moment():
+    if not client.is_authenticated():
+        return jsonify({"success": False, "error": "Chưa đăng nhập"}), 401
+
+    data = request.json or {}
+    moment_uid = data.get("moment_uid")
+    emoji = data.get("emoji", "❤️")
+
+    if not moment_uid:
+        return jsonify({"success": False, "error": "Thiếu moment_uid"}), 400
+
+    try:
+        res = client.moments.react(moment_uid, emoji)
+        return jsonify({"success": True, "result": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ==========================================
+# CHAT & TIN NHẮN TRỰC TIẾP
+# ==========================================
+@app.route("/api/chat/conversations", methods=["GET"])
+def get_conversations():
+    if not client.is_authenticated():
+        return jsonify({"conversations": []})
+
+    try:
+        convs = client.chat.get_conversations()
+        friend_map = {f["uid"]: f for f in FRIENDS_CACHE.get("friends", [])}
+        result = []
+
+        for c in convs:
+            peer_uid = c.get("peer_uid")
+            peer = friend_map.get(peer_uid)
+            if not peer and peer_uid:
+                try:
+                    p = client.user.get_profile(peer_uid)
+                    peer = {
+                        "uid": peer_uid,
+                        "first_name": p.get("first_name", "Bạn bè"),
+                        "last_name": p.get("last_name", ""),
+                        "username": p.get("username", ""),
+                        "profile_picture": p.get("profile_picture_url")
+                    }
+                except Exception:
+                    peer = {"uid": peer_uid, "first_name": "Bạn Locket", "username": "locket"}
+
+            last_msg = c.get("latest_message", {})
+            result.append({
+                "conversation_id": c.get("conversation_id"),
+                "peer": peer or {"first_name": "Bạn bè", "username": "locket"},
+                "last_message": last_msg.get("text", ""),
+                "timestamp": last_msg.get("timestamp"),
+                "unread_count": c.get("unread_count", 0)
+            })
+
+        return jsonify({"conversations": result})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"conversations": [], "error": str(e)})
+
+@app.route("/api/chat/messages", methods=["GET"])
+def get_chat_messages():
+    if not client.is_authenticated():
+        return jsonify({"messages": []})
+
+    peer_uid = request.args.get("uid")
+    if not peer_uid:
+        return jsonify({"messages": []})
+
+    try:
+        msgs = client.chat.get_messages(peer_uid)
+        return jsonify({"messages": msgs, "my_uid": client.session.uid})
+    except Exception as e:
+        return jsonify({"messages": [], "error": str(e)})
+
+@app.route("/api/chat/send", methods=["POST"])
+def send_chat_message():
+    if not client.is_authenticated():
+        return jsonify({"success": False, "error": "Chưa đăng nhập"}), 401
+
+    data = request.json or {}
+    to_uid = data.get("to_uid")
+    text = data.get("text", "").strip()
+
+    if not to_uid or not text:
+        return jsonify({"success": False, "error": "Vui lòng nhập nội dung tin nhắn!"}), 400
+
+    try:
+        res = client.chat.send_message(to_uid, text)
+        return jsonify({"success": True, "result": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/api/weather", methods=["GET"])
 def get_weather():
     city = request.args.get("city", "Hà Nội")
