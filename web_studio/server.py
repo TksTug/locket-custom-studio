@@ -193,11 +193,10 @@ def get_weather():
     data = fetch_live_weather(city)
     return jsonify(data)
 
-def process_image_with_options(image_bytes: bytes, frame_type: str, weather_enabled: bool, weather_data: dict, weather_pos: str, caption: str) -> Image.Image:
+def process_image_with_options(image_bytes: bytes, frame_type: str, weather_enabled: bool, weather_data: dict, weather_pos: str, weather_style: str, caption: str) -> Image.Image:
     """Takes raw image bytes and composites frame + weather card."""
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     img = crop_to_square(img)
-    # Resize to standard Locket 1080x1080 if smaller/larger for consistency
     if img.size != (1080, 1080):
         img = img.resize((1080, 1080), Image.Resampling.LANCZOS)
 
@@ -207,7 +206,7 @@ def process_image_with_options(image_bytes: bytes, frame_type: str, weather_enab
 
     # 2. Apply Glassmorphism Weather Card
     if weather_enabled and weather_data:
-        img = draw_glassmorphism_weather_card(img, weather_data, position=weather_pos)
+        img = draw_glassmorphism_weather_card(img, weather_data, position=weather_pos, style=weather_style or "pill")
 
     return img
 
@@ -220,7 +219,8 @@ def preview():
 
         frame_type = request.form.get("frame_type", "none")
         weather_enabled = request.form.get("weather_enabled", "false") == "true"
-        weather_pos = request.form.get("weather_pos", "top_left")
+        weather_pos = request.form.get("weather_pos", "top_right")
+        weather_style = request.form.get("weather_style", "pill")
         caption = request.form.get("caption", "")
 
         weather_data = None
@@ -235,10 +235,10 @@ def preview():
             weather_enabled=weather_enabled,
             weather_data=weather_data,
             weather_pos=weather_pos,
+            weather_style=weather_style,
             caption=caption
         )
 
-        # Output PNG base64
         buf = io.BytesIO()
         processed_img.save(buf, format="PNG")
         b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -268,11 +268,11 @@ def post_moment():
         caption = request.form.get("caption", "")
         frame_type = request.form.get("frame_type", "none")
         weather_enabled = request.form.get("weather_enabled", "false") == "true"
-        weather_pos = request.form.get("weather_pos", "top_left")
+        weather_pos = request.form.get("weather_pos", "top_right")
+        weather_style = request.form.get("weather_style", "pill")
         recipients_raw = request.form.get("recipients", "")
         recipients = json.loads(recipients_raw) if recipients_raw else None
 
-        # Custom colors / note type
         custom_gradient = request.form.get("custom_gradient", "")
         note_icon = request.form.get("note_icon", "")
 
@@ -293,16 +293,15 @@ def post_moment():
                 weather_enabled=weather_enabled,
                 weather_data=weather_data,
                 weather_pos=weather_pos,
+                weather_style=weather_style,
                 caption=caption
             )
             processed_img.convert("RGB").save(processed_image_path, format="WEBP", quality=90)
         elif video_file:
-            # Save video to temp
             video_filename = os.path.join(temp_dir, "input_video.mp4")
             video_file.save(video_filename)
             video_path = video_filename
 
-            # Extract first frame as thumbnail and apply effects
             import imageio_ffmpeg
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
             raw_thumb_path = os.path.join(temp_dir, "raw_thumb.png")
@@ -321,11 +320,11 @@ def post_moment():
                     weather_enabled=weather_enabled,
                     weather_data=weather_data,
                     weather_pos=weather_pos,
+                    weather_style=weather_style,
                     caption=caption
                 )
                 processed_img.convert("RGB").save(processed_image_path, format="WEBP", quality=90)
             else:
-                # Fallback blank canvas
                 blank = Image.new("RGB", (1080, 1080), (20, 20, 30))
                 blank.save(processed_image_path, format="WEBP")
 

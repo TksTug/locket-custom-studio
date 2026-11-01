@@ -115,34 +115,40 @@
           <div class="glass-card p-6 rounded-3xl space-y-4">
             <div class="flex items-center justify-between">
               <label class="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <i data-lucide="crop" class="w-4 h-4 text-pink-400"></i> 2. Chọn Khung Ảnh Độc Quyền
+                <i data-lucide="crop" class="w-4 h-4 text-pink-400"></i> 2. Chọn Khung Ảnh
               </label>
-              <span id="frameSelectedName" class="text-xs text-pink-400 font-mono">Retro 35mm</span>
+              <span id="frameSelectedName" class="text-xs text-pink-400 font-mono">Không khung (Nguyên bản)</span>
             </div>
             
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <button type="button" onclick="selectFrame('retro_cam', 'Retro 35mm')" class="frame-btn active glass-panel p-3.5 rounded-2xl text-left border-2 border-pink-500 bg-pink-500/10">
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <button type="button" onclick="selectFrame('none', 'Không khung (Nguyên bản)')" class="frame-btn active glass-panel p-3 rounded-2xl text-left border-2 border-pink-500 bg-pink-500/10">
+                <div class="text-emerald-400 font-bold text-xs mb-1">✕ None</div>
+                <div class="text-xs font-semibold text-white">Không Khung</div>
+                <div class="text-[10px] text-slate-400">Giữ ảnh gốc 100%</div>
+              </button>
+
+              <button type="button" onclick="selectFrame('retro_cam', 'Retro 35mm')" class="frame-btn glass-panel p-3 rounded-2xl text-left border border-white/10 hover:border-white/30">
                 <div class="text-amber-400 font-bold text-xs mb-1 font-mono">'26 11 01</div>
                 <div class="text-xs font-semibold text-white">Retro Cam</div>
-                <div class="text-[10px] text-slate-400">Date stamp cổ điển</div>
+                <div class="text-[10px] text-slate-400">Date stamp vintage</div>
               </button>
 
-              <button type="button" onclick="selectFrame('polaroid', 'Polaroid')" class="frame-btn glass-panel p-3.5 rounded-2xl text-left border border-white/10 hover:border-white/30">
-                <div class="w-6 h-6 bg-white rounded-sm mb-1 shadow-sm"></div>
+              <button type="button" onclick="selectFrame('polaroid', 'Polaroid')" class="frame-btn glass-panel p-3 rounded-2xl text-left border border-white/10 hover:border-white/30">
+                <div class="w-5 h-5 bg-white rounded-sm mb-1 shadow-sm"></div>
                 <div class="text-xs font-semibold text-white">Polaroid</div>
-                <div class="text-[10px] text-slate-400">Viền trắng & chú thích</div>
+                <div class="text-[10px] text-slate-400">Viền trắng thanh lịch</div>
               </button>
 
-              <button type="button" onclick="selectFrame('cyberpunk', 'Cyberpunk')" class="frame-btn glass-panel p-3.5 rounded-2xl text-left border border-white/10 hover:border-white/30">
+              <button type="button" onclick="selectFrame('glass_frost', 'Kính Mờ')" class="frame-btn glass-panel p-3 rounded-2xl text-left border border-white/10 hover:border-white/30">
+                <div class="w-5 h-5 rounded-lg border border-white/40 mb-1"></div>
+                <div class="text-xs font-semibold text-white">Glass Frost</div>
+                <div class="text-[10px] text-slate-400">Bo viền kính mờ</div>
+              </button>
+
+              <button type="button" onclick="selectFrame('cyberpunk', 'Cyberpunk')" class="frame-btn glass-panel p-3 rounded-2xl text-left border border-white/10 hover:border-white/30">
                 <div class="text-cyan-400 font-bold text-xs mb-1">✜ NEON</div>
                 <div class="text-xs font-semibold text-white">Cyberpunk</div>
-                <div class="text-[10px] text-slate-400">Viền phát sáng gaming</div>
-              </button>
-
-              <button type="button" onclick="selectFrame('glass_frost', 'Kính Mờ')" class="frame-btn glass-panel p-3.5 rounded-2xl text-left border border-white/10 hover:border-white/30">
-                <div class="w-6 h-6 rounded-lg border border-white/40 mb-1"></div>
-                <div class="text-xs font-semibold text-white">Glass Frost</div>
-                <div class="text-[10px] text-slate-400">Viền kính bo tròn mịn</div>
+                <div class="text-[10px] text-slate-400">Viền góc Neon</div>
               </button>
             </div>
           </div>
@@ -156,7 +162,7 @@
                 </div>
                 <div>
                   <h3 class="text-sm font-semibold text-white">Card Thời Tiết & Live Radar</h3>
-                  <p class="text-xs text-slate-400">Widget kính mờ hiển thị nhiệt độ, độ ẩm và radar quét mưa thực tế</p>
+                  <p class="text-xs text-slate-400">Hiển thị nhiệt độ và tín hiệu radar thời tiết thực tế</p>
                 </div>
               </div>
 
@@ -168,30 +174,36 @@
             </div>
 
             <!-- Weather Options -->
-            <div id="weatherControls" class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <div id="weatherControls" class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <div>
+                <label class="text-xs font-medium text-slate-300 mb-1.5 block">Kiểu dáng hiển thị</label>
+                <select id="weatherStyleSelect" onchange="triggerUpdatePreview()" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
+                  <option value="pill">💊 Viên thuốc Slim (Siêu gọn & đẹp)</option>
+                  <option value="compact_card">🔲 Thẻ kính Mini</option>
+                </select>
+              </div>
+
               <div>
                 <label class="text-xs font-medium text-slate-300 mb-1.5 block">Khu vực / Thành phố</label>
-                <div class="flex gap-2">
-                  <select id="weatherCitySelect" onchange="handleCityChange()" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
-                    <option value="Hà Nội">Hà Nội</option>
-                    <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh</option>
-                    <option value="Đà Nẵng">Đà Nẵng</option>
-                    <option value="Đà Lạt">Đà Lạt</option>
-                    <option value="Hải Phòng">Hải Phòng</option>
-                    <option value="Cần Thơ">Cần Thơ</option>
-                    <option value="custom">Nhập thành phố khác...</option>
-                  </select>
-                </div>
+                <select id="weatherCitySelect" onchange="handleCityChange()" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
+                  <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh</option>
+                  <option value="Hà Nội">Hà Nội</option>
+                  <option value="Đà Nẵng">Đà Nẵng</option>
+                  <option value="Đà Lạt">Đà Lạt</option>
+                  <option value="Hải Phòng">Hải Phòng</option>
+                  <option value="Cần Thơ">Cần Thơ</option>
+                  <option value="custom">Nhập thành phố khác...</option>
+                </select>
                 <input type="text" id="customCityInput" placeholder="VD: Nha Trang, Vũng Tàu..." class="hidden w-full mt-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400" onchange="triggerUpdatePreview()">
               </div>
 
               <div>
-                <label class="text-xs font-medium text-slate-300 mb-1.5 block">Vị trí Card trên ảnh</label>
+                <label class="text-xs font-medium text-slate-300 mb-1.5 block">Vị trí hiển thị</label>
                 <select id="weatherPosSelect" onchange="triggerUpdatePreview()" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
-                  <option value="top_left">Góc trên - Bên trái</option>
                   <option value="top_right">Góc trên - Bên phải</option>
-                  <option value="bottom_left">Góc dưới - Bên trái</option>
+                  <option value="top_left">Góc trên - Bên trái</option>
                   <option value="bottom_right">Góc dưới - Bên phải</option>
+                  <option value="bottom_left">Góc dưới - Bên trái</option>
                 </select>
               </div>
             </div>
@@ -199,7 +211,7 @@
             <!-- Live Weather Metrics badge -->
             <div id="weatherLivePreviewBadge" class="glass-panel p-3 rounded-2xl flex items-center justify-between text-xs">
               <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span id="weatherStatText" class="text-slate-300">Đang đồng bộ dữ liệu thời tiết thực...</span>
               </div>
               <span class="text-[10px] text-cyan-400 font-mono">Open-Meteo Live</span>
@@ -388,7 +400,7 @@
   <script>
     // State management
     let currentTab = 'photo';
-    let selectedFrame = 'retro_cam';
+    let selectedFrame = 'none';
     let selectedGradient = null;
     let selectedImageFile = null;
     let selectedVideoFile = null;
@@ -666,6 +678,7 @@
           formData.append('frame_type', selectedFrame);
           formData.append('weather_enabled', weatherEnabled ? 'true' : 'false');
           formData.append('weather_pos', weatherPos);
+          formData.append('weather_style', document.getElementById('weatherStyleSelect').value);
           formData.append('weather_city', city);
           formData.append('caption', caption);
 
@@ -719,6 +732,7 @@
         formData.append('caption', document.getElementById('captionInput').value);
         formData.append('weather_enabled', document.getElementById('weatherToggle').checked ? 'true' : 'false');
         formData.append('weather_pos', document.getElementById('weatherPosSelect').value);
+        formData.append('weather_style', document.getElementById('weatherStyleSelect').value);
         formData.append('weather_city', getSelectedCity());
         
         if (selectedGradient) {
