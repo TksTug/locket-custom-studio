@@ -1,6 +1,7 @@
 import os
 import sys
 import io
+import time
 import json
 import base64
 import tempfile
@@ -129,23 +130,61 @@ def auth_logout():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+from concurrent.futures import ThreadPoolExecutor
+
+FRIENDS_CACHE = {"timestamp": 0, "friends": []}
+
 @app.route("/api/friends", methods=["GET"])
 def list_friends():
+    global FRIENDS_CACHE
     if not client.is_authenticated():
         return jsonify({"friends": []})
+
+    # Return cached friends if fetched within 5 minutes
+    now = time.time()
+    if now - FRIENDS_CACHE["timestamp"] < 300 and FRIENDS_CACHE["friends"]:
+        return jsonify({"friends": FRIENDS_CACHE["friends"]})
+
     try:
-        friends = client.friends.list_all()
-        result = []
-        for f in friends:
-            result.append({
-                "uid": f.get("uid"),
-                "first_name": f.get("first_name", ""),
-                "last_name": f.get("last_name", ""),
-                "username": f.get("username", ""),
-                "profile_picture": f.get("profile_picture_url")
-            })
-        return jsonify({"friends": result})
+        token = client.session.get_valid_token()
+        my_uid = client.session.uid
+        import urllib.request
+        url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/friends"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        doc_items = data.get("documents", [])
+        uids = [doc["name"].split("/")[-1] for doc in doc_items]
+
+        def fetch_single_profile(fuid):
+            try:
+                p = client.user.get_profile(fuid)
+                return {
+                    "uid": fuid,
+                    "first_name": p.get("first_name", ""),
+                    "last_name": p.get("last_name", ""),
+                    "username": p.get("username", ""),
+                    "profile_picture": p.get("profile_picture_url")
+                }
+            except Exception:
+                return {
+                    "uid": fuid,
+                    "first_name": "Bạn Locket",
+                    "last_name": "",
+                    "username": fuid[:8],
+                    "profile_picture": None
+                }
+
+        # Fetch in parallel with 10 threads
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            friends = list(executor.map(fetch_single_profile, uids))
+
+        FRIENDS_CACHE = {"timestamp": now, "friends": friends}
+        return jsonify({"friends": friends})
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"friends": [], "error": str(e)})
 
 @app.route("/api/weather", methods=["GET"])
