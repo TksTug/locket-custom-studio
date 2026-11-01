@@ -236,6 +236,15 @@
         </button>
       </div>
 
+      <!-- History shortcut pill directly under Shutter (Image 6 & PanResponder trigger) -->
+      <button onclick="switchMainTab('feed')" class="mt-2 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full glass-pill text-xs font-semibold text-slate-300 hover:text-white active:scale-95 transition-all shadow-md">
+        <div class="w-4 h-4 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center text-[9px] text-amber-300 font-bold">
+          <i data-lucide="image" class="w-2.5 h-2.5"></i>
+        </div>
+        <span>Lịch sử</span>
+        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400"></i>
+      </button>
+
     </section>
 
     <!-- ======================================================== -->
@@ -1193,6 +1202,54 @@
       if (diffHours < 24) return `${diffHours} giờ trước`;
       const diffDays = Math.floor(diffHours / 24);
       return `${diffDays} ngày trước`;
+    }
+
+    // ==========================================
+    // 10. GESTURE ENGINE (REACT NATIVE PANRESPONDER EQUIVALENT)
+    // ==========================================
+    let touchStartY = 0;
+    let touchStartX = 0;
+    let lastTapTime = 0;
+
+    document.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches.length === 1) {
+        touchStartY = e.touches[0].clientY;
+        touchStartX = e.touches[0].clientX;
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', (e) => {
+      if (e.changedTouches && e.changedTouches.length === 1) {
+        const dy = e.changedTouches[0].clientY - touchStartY;
+        const dx = e.changedTouches[0].clientX - touchStartX;
+
+        // Kích hoạt khi vuốt dọc rõ ràng (> 50px)
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 50) {
+          // Vuốt XUỐNG ở màn hình Camera -> Mở Feed / Lịch sử (PanResponder swipe down)
+          if (activeTab === 'camera' && dy > 50 && !isPostCaptureState) {
+            switchMainTab('feed');
+          }
+          // Vuốt LÊN ở màn hình Feed (khi cuộn ở đầu trang) -> Về Camera (PanResponder swipe up)
+          else if (activeTab === 'feed' && dy < -50) {
+            const feedEl = document.getElementById('viewFeed');
+            if (feedEl && feedEl.scrollTop <= 20) {
+              switchMainTab('camera');
+            }
+          }
+        }
+      }
+    }, { passive: true });
+
+    // Double-tap trên khung camera để đổi chiều trước/sau
+    const cameraSquircleEl = document.getElementById('cameraSquircle');
+    if (cameraSquircleEl) {
+      cameraSquircleEl.addEventListener('touchend', (e) => {
+        const now = Date.now();
+        if (now - lastTapTime < 320) {
+          flipCameraOrientation();
+        }
+        lastTapTime = now;
+      });
     }
   </script>
 </body>
