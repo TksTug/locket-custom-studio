@@ -35,6 +35,17 @@ app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
 
 SESSION_FILE = os.path.join(PROJECT_ROOT, "locketlam_session.json")
+
+# Support initializing session from cloud environment variable (Render / Railway / Fly)
+SESSION_ENV = os.environ.get("LOCKET_SESSION_DATA")
+if SESSION_ENV and not os.path.exists(SESSION_FILE):
+    try:
+        with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            f.write(SESSION_ENV.strip())
+        print(">> Initialized locketlam_session.json from LOCKET_SESSION_DATA environment variable.")
+    except Exception as e:
+        print(">> Could not write session from environment variable:", e)
+
 client = LocketClient(session_path=SESSION_FILE)
 
 @app.route("/")
