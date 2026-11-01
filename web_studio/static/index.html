@@ -2,8 +2,18 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Locket Custom Studio - Video Siêu Dài, Khung Ảnh & Radar Thời Tiết</title>
+
+  <!-- PWA & Mobile Web App Meta -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#181926">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Locket Studio">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+
   <!-- Tailwind CSS & Lucide Icons -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -69,10 +79,18 @@
         </div>
       </div>
 
-      <!-- Auth Status Badge -->
-      <div id="authHeaderBadge" class="flex items-center gap-3 glass-card px-4 py-2.5 rounded-2xl">
-        <div class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></div>
-        <span class="text-xs text-slate-300 font-medium">Đang kiểm tra phiên...</span>
+      <div class="flex items-center gap-3">
+        <!-- PWA Install Button -->
+        <button id="btnInstallPwa" onclick="installPwaApp()" class="hidden flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-semibold hover:from-emerald-500/30 hover:to-teal-500/30 transition-all shadow-lg shadow-emerald-500/10">
+          <i data-lucide="download" class="w-4 h-4 text-emerald-400"></i>
+          <span>CÀI VÀO ĐIỆN THOẠI</span>
+        </button>
+
+        <!-- Auth Status Badge -->
+        <div id="authHeaderBadge" class="flex items-center gap-3 glass-card px-4 py-2.5 rounded-2xl">
+          <div class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></div>
+          <span class="text-xs text-slate-300 font-medium">Đang kiểm tra phiên...</span>
+        </div>
       </div>
     </header>
 
@@ -795,8 +813,36 @@
       }
     }
 
+    // PWA Install Prompt Handler
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const installBtn = document.getElementById('btnInstallPwa');
+      if (installBtn) installBtn.classList.remove('hidden');
+    });
+
+    async function installPwaApp() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          console.log('User installed the PWA app!');
+          document.getElementById('btnInstallPwa').classList.add('hidden');
+        }
+        deferredPrompt = null;
+      } else {
+        alert('Để cài vào màn hình chính Android: Bấm vào biểu tượng 3 chấm ở góc trình duyệt Chrome -> chọn "Cài đặt ứng dụng" hoặc "Thêm vào màn hình chính"');
+      }
+    }
+
     // Run on startup
     window.addEventListener('DOMContentLoaded', () => {
+      // Register Service Worker for PWA
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW error:', err));
+      }
+
       checkAuth();
       // Pre-fetch initial weather
       fetch('/api/weather?city=Hà Nội')
