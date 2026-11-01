@@ -34,9 +34,27 @@ DEFAULT_LOCATIONS = {
     "cantho": {"name": "Cần Thơ", "lat": 10.0452, "lon": 105.7469},
 }
 
+def reverse_geocode(lat: float, lon: float) -> str:
+    """Reverse geocodes latitude and longitude into a clean, friendly Vietnamese city/district name."""
+    try:
+        url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lon}&localityLanguage=vi"
+        res = requests.get(url, timeout=4)
+        if res.status_code == 200:
+            d = res.json()
+            locality = d.get("locality")
+            city = d.get("city")
+            subdiv = d.get("principalSubdivision")
+            raw_city = (city or subdiv or locality or "")
+            clean = raw_city.replace("Thành phố ", "TP. ").replace("Tỉnh ", "").strip()
+            if clean:
+                return clean
+    except Exception:
+        pass
+    return "Vị trí hiện tại"
+
 def get_coordinates(city_name: str) -> tuple[str, float, float]:
     """Search for latitude & longitude of city via Open-Meteo Geocoding."""
-    slug = city_name.strip().lower()
+    slug = (city_name or "").strip().lower()
     for k, v in DEFAULT_LOCATIONS.items():
         if k in slug or v["name"].lower() in slug:
             return v["name"], v["lat"], v["lon"]
@@ -53,12 +71,24 @@ def get_coordinates(city_name: str) -> tuple[str, float, float]:
     except Exception:
         pass
 
-    # Default to Hanoi if not found
-    return "Hà Nội", 21.0285, 105.8542
+    # Default to TP. Hồ Chí Minh
+    return "TP. Hồ Chí Minh", 10.8231, 106.6297
 
-def fetch_live_weather(city_name: str = "Hà Nội") -> dict:
-    """Fetches real-time weather metrics (temp, apparent temp, humidity, wind, condition)."""
-    resolved_name, lat, lon = get_coordinates(city_name)
+def fetch_live_weather(city_name: str = None, lat: float = None, lon: float = None) -> dict:
+    """Fetches real-time weather metrics by GPS coordinates (lat, lon) or city name."""
+    resolved_name = "Vị trí hiện tại"
+
+    if lat is not None and lon is not None:
+        try:
+            lat = float(lat)
+            lon = float(lon)
+            resolved_name = reverse_geocode(lat, lon)
+        except Exception:
+            lat, lon = None, None
+
+    if lat is None or lon is None:
+        resolved_name, lat, lon = get_coordinates(city_name or "TP. Hồ Chí Minh")
+
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
@@ -80,6 +110,8 @@ def fetch_live_weather(city_name: str = "Hà Nội") -> dict:
                 "success": True,
                 "city": resolved_name,
                 "temp": f"{temp}°C",
+                "emoji": emoji,
+                "icon": emoji,
                 "feels_like": f"{feels}°C",
                 "condition": f"{emoji} {cond_desc}",
                 "humidity": f"{humidity}%",
@@ -97,6 +129,8 @@ def fetch_live_weather(city_name: str = "Hà Nội") -> dict:
         "success": False,
         "city": resolved_name,
         "temp": "31°C",
+        "emoji": "🌤️",
+        "icon": "🌤️",
         "feels_like": "34°C",
         "condition": "🌤️ Trời đẹp",
         "humidity": "68%",

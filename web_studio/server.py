@@ -583,8 +583,10 @@ def send_chat_message():
 
 @app.route("/api/weather", methods=["GET"])
 def get_weather():
-    city = request.args.get("city", "Hà Nội")
-    data = fetch_live_weather(city)
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
+    city = request.args.get("city")
+    data = fetch_live_weather(city_name=city, lat=lat, lon=lon)
     return jsonify(data)
 
 def process_image_with_options(image_bytes: bytes, frame_type: str, weather_enabled: bool, weather_data: dict, weather_pos: str, weather_style: str, caption: str) -> Image.Image:
@@ -619,8 +621,10 @@ def preview():
 
         weather_data = None
         if weather_enabled:
-            weather_city = request.form.get("weather_city", "Hà Nội")
-            weather_data = fetch_live_weather(weather_city)
+            weather_city = request.form.get("weather_city")
+            weather_lat = request.form.get("weather_lat")
+            weather_lon = request.form.get("weather_lon")
+            weather_data = fetch_live_weather(city_name=weather_city, lat=weather_lat, lon=weather_lon)
 
         image_bytes = file.read()
         processed_img = process_image_with_options(
@@ -678,8 +682,10 @@ def post_moment():
 
         weather_data = None
         if weather_enabled:
-            weather_city = request.form.get("weather_city", "Hà Nội")
-            weather_data = fetch_live_weather(weather_city)
+            weather_city = request.form.get("weather_city")
+            weather_lat = request.form.get("weather_lat")
+            weather_lon = request.form.get("weather_lon")
+            weather_data = fetch_live_weather(city_name=weather_city, lat=weather_lat, lon=weather_lon)
 
         temp_dir = tempfile.mkdtemp()
         processed_image_path = os.path.join(temp_dir, "thumb.webp")

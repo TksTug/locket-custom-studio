@@ -1410,6 +1410,11 @@
       formData.append('caption', document.getElementById('cameraCaptionInput').value.trim());
       formData.append('recipients', JSON.stringify(Array.from(selectedRecipients)));
       formData.append('weather_enabled', weatherOverlayActive ? 'true' : 'false');
+      if (weatherData) {
+        if (weatherData.lat) formData.append('weather_lat', weatherData.lat);
+        if (weatherData.lon) formData.append('weather_lon', weatherData.lon);
+        if (weatherData.city) formData.append('weather_city', weatherData.city);
+      }
       formData.append('frame_type', selectedFrame);
       formData.append('filter_type', activeFilterClass);
 
@@ -2082,14 +2087,52 @@
     // 13. WEATHER & FRAME SERVICES
     // ==========================================
     async function fetchWeatherData() {
+      let lat = null, lon = null;
+      // 1. Try real GPS coordinates from browser/mobile device
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 5000,
+              maximumAge: 120000
+            });
+          });
+          lat = pos.coords.latitude;
+          lon = pos.coords.longitude;
+        } catch (e) {
+          console.log('GPS skipped or denied:', e.message);
+        }
+      }
+
+      // 2. Fallback to IP Geolocation if GPS unavailable or denied
+      if (!lat || !lon) {
+        try {
+          const ipRes = await fetch('https://ipwho.is/');
+          if (ipRes.ok) {
+            const ipData = await ipRes.json();
+            if (ipData.success) {
+              lat = ipData.latitude;
+              lon = ipData.longitude;
+            }
+          }
+        } catch (e) {
+          console.log('IP location fallback error:', e);
+        }
+      }
+
       try {
-        const res = await fetch('/api/weather');
+        const url = (lat && lon) ? `/api/weather?lat=${lat}&lon=${lon}` : '/api/weather';
+        const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
         weatherData = data;
-        document.getElementById('liveWeatherIcon').innerText = data.icon || '🌧️';
-        document.getElementById('liveWeatherTemp').innerText = `${data.temp}°C`;
-        document.getElementById('liveWeatherCity').innerText = data.city || 'TP.HCM';
+        const iconEl = document.getElementById('liveWeatherIcon');
+        const tempEl = document.getElementById('liveWeatherTemp');
+        const cityEl = document.getElementById('liveWeatherCity');
+        if (iconEl) iconEl.innerText = data.emoji || data.icon || '☀️';
+        if (tempEl) tempEl.innerText = data.temp || '31°C';
+        if (cityEl) cityEl.innerText = data.city || 'Vị trí hiện tại';
       } catch (err) {
         console.warn('Weather error:', err);
       }
@@ -2101,6 +2144,7 @@
       const badge = document.getElementById('liveWeatherBadge');
       const btn = document.getElementById('btnWeatherToggle');
       if (weatherOverlayActive) {
+        if (!weatherData || !weatherData.lat) fetchWeatherData();
         if (badge) badge.classList.remove('hidden');
         if (btn) btn.className = "bg-amber-400 text-black w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-all shadow-md z-30 cursor-pointer font-bold";
       } else {
