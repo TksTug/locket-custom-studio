@@ -82,7 +82,41 @@ def auth_login():
             }
         })
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 401
+        err_msg = str(e)
+        if "INVALID_PASSWORD" in err_msg:
+            err_msg = "Mật khẩu không chính xác! Hãy kiểm tra lại hoặc bấm 'Quên mật khẩu' để đặt lại mật khẩu mới cho Locket."
+        elif "EMAIL_NOT_FOUND" in err_msg:
+            err_msg = "Email này chưa được đăng ký trên Locket! Vui lòng kiểm tra lại email trong app Locket của bạn."
+        return jsonify({"success": False, "error": err_msg}), 401
+
+@app.route("/api/auth/reset-password", methods=["POST"])
+def reset_password():
+    data = request.json or {}
+    email = data.get("email", "").strip()
+    if not email:
+        return jsonify({"success": False, "error": "Vui lòng nhập Email để nhận link đặt lại mật khẩu!"}), 400
+
+    try:
+        url = f"{client.session.FIREBASE_AUTH_URL}:sendOobCode?key={client.session.FIREBASE_API_KEY}"
+        headers = client.session.device.default_headers
+        payload = {
+            "requestType": "PASSWORD_RESET",
+            "email": email
+        }
+        res = requests.post(url, json=payload, headers=headers)
+        res_data = res.json()
+        if res.status_code == 200:
+            return jsonify({
+                "success": True,
+                "message": f"Đã gửi liên kết đặt lại mật khẩu đến {email}! Hãy mở hộp thư (kể cả mục Spam) để tạo mật khẩu mới."
+            })
+        else:
+            err = res_data.get("error", {}).get("message", "Thất bại")
+            if "EMAIL_NOT_FOUND" in err:
+                err = f"Không tìm thấy tài khoản Locket nào gắn với email: {email}"
+            return jsonify({"success": False, "error": err}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():

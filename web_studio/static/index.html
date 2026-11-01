@@ -283,13 +283,17 @@
                 <input type="email" id="loginEmail" placeholder="your_email@example.com" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400">
               </div>
               <div>
-                <label class="text-xs text-slate-300 block mb-1">Mật khẩu</label>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="text-xs text-slate-300 block">Mật khẩu Locket</label>
+                  <button type="button" onclick="handleForgotPassword()" class="text-[11px] text-cyan-400 hover:underline">Quên mật khẩu?</button>
+                </div>
                 <input type="password" id="loginPassword" placeholder="••••••••" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400">
               </div>
               <button type="button" onclick="handleLogin()" id="btnLogin" class="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 rounded-xl text-white font-semibold text-sm transition-all shadow-lg shadow-cyan-500/20">
                 Đăng Nhập
               </button>
             </div>
+            <div id="forgotPasswordNotice" class="hidden text-xs text-amber-300 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20"></div>
           </div>
 
           <!-- Logged in Profile & Friends list -->
@@ -481,6 +485,37 @@
         selectedFriendUids = friendsList.map(f => f.uid);
         checkboxes.forEach(cb => cb.checked = true);
         btn.innerText = 'Bỏ chọn tất cả';
+      }
+    }
+
+    async function handleForgotPassword() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const notice = document.getElementById('forgotPasswordNotice');
+      if (!email) {
+        alert('Vui lòng nhập Email của bạn vào ô Email trước để nhận link đặt lại mật khẩu!');
+        return;
+      }
+      notice.className = 'text-xs text-cyan-400 p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 block';
+      notice.innerText = 'Đang gửi yêu cầu đặt lại mật khẩu đến email ' + email + '...';
+
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (data.success) {
+          notice.className = 'text-xs text-emerald-400 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 block';
+          notice.innerText = '🎉 ' + data.message;
+          alert('Đã gửi link đặt lại mật khẩu vào email của bạn! Hãy mở hòm thư (kể cả mục Thư rác/Spam), bấm vào link để đặt mật khẩu mới, sau đó quay lại đây đăng nhập.');
+        } else {
+          notice.className = 'text-xs text-rose-400 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 block';
+          notice.innerText = 'Lỗi: ' + (data.error || 'Không thể gửi email đặt lại mật khẩu');
+        }
+      } catch (e) {
+        notice.className = 'text-xs text-rose-400 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 block';
+        notice.innerText = 'Lỗi kết nối: ' + e;
       }
     }
 
