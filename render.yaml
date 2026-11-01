@@ -5,6 +5,7 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: singapore
+    autoDeploy: true
     envVars:
       - key: PORT
         value: 5050
