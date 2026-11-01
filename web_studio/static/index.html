@@ -379,7 +379,7 @@
     <!-- ======================================================== -->
     <!-- 2. TAB KHOẢNH KHẮC / FEED (TAB 2 - CLEAN & MINIMAL) -->
     <!-- ======================================================== -->
-    <section id="viewFeed" class="hidden w-full h-full flex flex-col pb-24 overflow-y-auto custom-scroll" style="scroll-behavior: smooth;">
+    <section id="viewFeed" class="hidden w-full h-full flex flex-col pb-28 overflow-y-auto custom-scroll" style="scroll-behavior: smooth; -webkit-overflow-scrolling: touch; touch-action: pan-y;">
       <!-- Friends Filter Chips Row -->
       <div class="px-4 py-2 shrink-0 border-b border-white/10">
         <div id="feedFriendsFilterRow" class="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1">
@@ -1993,19 +1993,13 @@
         const dy = e.changedTouches[0].clientY - touchStartY;
         const dx = e.changedTouches[0].clientX - touchStartX;
 
-        // 1. Vuốt DỌC (Swipe Vertical)
-        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 50) {
+        // 1. Vuốt DỌC (Swipe Vertical - CHỈ kích hoạt khi ở Camera để mở Lịch sử)
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 70) {
           // Vuốt XUỐNG ở màn hình Camera -> Mở Feed / Lịch sử
-          if (activeTab === 'camera' && dy > 50 && !isPostCaptureState) {
+          if (activeTab === 'camera' && dy > 70 && !isPostCaptureState) {
             switchMainTab('feed');
           }
-          // Vuốt LÊN ở màn hình Feed (khi cuộn ở đầu trang) -> Về Camera
-          else if (activeTab === 'feed' && dy < -50) {
-            const feedEl = document.getElementById('viewFeed');
-            if (feedEl && feedEl.scrollTop <= 20) {
-              switchMainTab('camera');
-            }
-          }
+          // Tuyệt đối KHÔNG chặn hoặc chuyển cam khi người dùng đang lướt xem ảnh trong Feed
         }
         // 2. Vuốt NGANG (Swipe Horizontal trên Camera) -> Đổi Bộ lọc thời gian thực
         else if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60 && activeTab === 'camera') {
