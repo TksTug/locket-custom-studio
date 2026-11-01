@@ -8,6 +8,7 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 import io
+import re
 import time
 import json
 import base64
@@ -196,7 +197,7 @@ def list_friends():
         return jsonify({"friends": [], "error": str(e)})
 
 # ==========================================
-# FEED (XEM BẠN BÈ ĐĂNG GÌ - TẤT CẢ KHOẢNH KHẮC)
+# FEED (XEM BẠN BÈ ĐĂNG GÌ - KHOẢNH KHẮC THẬT)
 # ==========================================
 FEED_CACHE = {"timestamp": 0, "feed": []}
 
@@ -267,7 +268,30 @@ def get_feed():
             except Exception:
                 return {"uid": uid, "first_name": "Bạn Locket", "username": uid[:8]}
 
-        # 1. Fetch latest moments from friends via get_latest
+        # 1. Fetch user's own genuine posted moments
+        try:
+            my_moments = client.moments.get_all_my_moments(limit=10)
+            for mm in my_moments:
+                mid = mm.get("moment_uid")
+                thumb = mm.get("thumbnail_url")
+                if not thumb or thumb in seen_thumbs:
+                    continue
+                seen_thumbs.add(thumb)
+                if mid:
+                    seen_uids.add(mid)
+                feed_items.append({
+                    "moment_uid": mid,
+                    "thumbnail_url": thumb,
+                    "video_url": mm.get("video_url"),
+                    "caption": mm.get("caption", ""),
+                    "date": mm.get("created_at"),
+                    "timestamp": parse_moment_timestamp(mm.get("created_at")),
+                    "author": my_info
+                })
+        except Exception as e:
+            print("Error get_all_my_moments:", e)
+
+        # 2. Fetch latest moments from friends via get_latest
         try:
             latest_moments = client.moments.get_latest()
             for m in latest_moments:
@@ -291,7 +315,7 @@ def get_feed():
         except Exception as e:
             print("Error get_latest:", e)
 
-        # 2. Discover moments from active conversations (all friends' moments)
+        # 3. Discover genuine moments from conversations
         try:
             token = client.session.get_valid_token()
             u_url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/conversations"
@@ -313,11 +337,18 @@ def get_feed():
                             thumb_val = fields.get("thumbnail_url", {}).get("stringValue")
                             if thumb_val:
                                 mid = fields.get("reply_moment", {}).get("stringValue") or doc["name"].split("/")[-1]
+                                # Identify the authentic photographer from URL
+                                match = re.search(r'users%2F([a-zA-Z0-9_-]+)%2Fmoments', thumb_val)
+                                author_uid = match.group(1) if match else fields.get("sender", {}).get("stringValue")
+                                sender = fields.get("sender", {}).get("stringValue")
+                                body = fields.get("body", {}).get("stringValue", "")
+                                # Only set caption if the sender was the actual photographer
+                                caption = body if sender == author_uid else ""
                                 res.append({
                                     "moment_uid": mid,
                                     "thumbnail_url": thumb_val,
-                                    "caption": fields.get("body", {}).get("stringValue", ""),
-                                    "sender": fields.get("sender", {}).get("stringValue"),
+                                    "caption": caption,
+                                    "author_uid": author_uid,
                                     "created_at": fields.get("created_at", {}).get("timestampValue", "")
                                 })
                 except Exception:
@@ -343,12 +374,12 @@ def get_feed():
                         "caption": cm["caption"],
                         "date": cm["created_at"],
                         "timestamp": parse_moment_timestamp(cm["created_at"]),
-                        "author": resolve_author(cm["sender"])
+                        "author": resolve_author(cm["author_uid"])
                     })
         except Exception as e:
             print("Error fetching conversation moments:", e)
 
-        # Sort all moments by timestamp descending (newest first)
+        # Sort all moments strictly by timestamp descending (newest first)
         feed_items.sort(key=lambda x: x.get("timestamp", 0.0), reverse=True)
 
         FEED_CACHE = {"timestamp": now, "feed": feed_items}

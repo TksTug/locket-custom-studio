@@ -22,8 +22,11 @@
     
     * {
       -webkit-tap-highlight-color: transparent;
-      user-select: none;
       box-sizing: border-box;
+    }
+
+    header, nav, button {
+      user-select: none;
     }
 
     body {
@@ -113,7 +116,7 @@
   <!-- ======================================================== -->
   <!-- MAIN CONTENT CONTAINER -->
   <!-- ======================================================== -->
-  <main class="flex-1 relative overflow-hidden flex flex-col items-center justify-start w-full px-3">
+  <main class="flex-1 min-h-0 w-full relative overflow-hidden flex flex-col items-center justify-start px-3">
 
     <!-- VIEW 1: CAMERA & POST STUDIO (GIAO DIỆN MỚI CHUẨN LOCKET) -->
     <div id="viewCamera" class="w-full flex flex-col items-center justify-center space-y-3 my-auto pb-16">
@@ -204,7 +207,7 @@
     </div>
 
     <!-- VIEW 2: FEED / DÒNG THỜI GIAN (XEM BẠN BÈ ĐĂNG GÌ - GIỐNG ẢNH 1 BÊN PHẢI) -->
-    <div id="viewFeed" class="w-full h-full flex flex-col items-center overflow-y-auto no-scrollbar scroll-smooth pb-28 pt-1 hidden">
+    <div id="viewFeed" class="w-full h-full min-h-0 flex-1 flex flex-col items-center overflow-y-auto overscroll-contain pb-32 pt-1 hidden" style="-webkit-overflow-scrolling: touch; touch-action: pan-y;">
       <!-- Top banner for easy return -->
       <div class="w-full max-w-[360px] flex items-center justify-between py-2 px-1 mb-2">
         <button onclick="switchToCameraMode()" class="flex items-center gap-1.5 text-xs font-bold text-amber-300 glass-pill px-3 py-1.5 rounded-full active:scale-95 transition-all">
@@ -214,15 +217,15 @@
         <span id="feedCountBadge" class="text-[11px] font-semibold text-slate-400 glass-pill px-2.5 py-1 rounded-full">Đang tải...</span>
       </div>
 
-      <div id="feedContainer" class="w-full flex flex-col items-center space-y-6">
+      <div id="feedContainer" class="w-full flex flex-col items-center space-y-6 pb-12">
         <!-- Rendered dynamically -->
       </div>
     </div>
 
     <!-- VIEW 3: TIN NHẮN & CHAT (GIỐNG ẢNH 1 BÊN TRÁI) -->
-    <div id="viewChat" class="w-full h-full flex flex-col hidden pt-1 pb-24">
+    <div id="viewChat" class="w-full h-full min-h-0 flex-1 flex flex-col hidden pt-1 pb-24">
       <!-- Conversation List Subview -->
-      <div id="chatListView" class="w-full h-full flex flex-col">
+      <div id="chatListView" class="w-full h-full min-h-0 flex-1 flex flex-col">
         <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
           <button onclick="switchToCameraMode()" class="flex items-center gap-1.5 text-xs font-bold text-amber-300 glass-pill px-3 py-1.5 rounded-full active:scale-95 transition-all">
             <i data-lucide="arrow-left" class="w-4 h-4"></i>
@@ -231,14 +234,14 @@
           <span id="chatCountText" class="text-xs text-slate-400 font-mono">27 cuộc trò chuyện</span>
         </div>
 
-        <div id="chatConversationsContainer" class="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-1 pb-6">
+        <div id="chatConversationsContainer" class="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-2 pr-1 pb-16" style="-webkit-overflow-scrolling: touch; touch-action: pan-y;">
           <!-- Loaded dynamically -->
           <div class="text-xs text-slate-500 py-8 text-center">Đang tải tin nhắn...</div>
         </div>
       </div>
 
       <!-- Active 1-on-1 Chat Subview (Giống ảnh 1 bên trái) -->
-      <div id="chatDirectView" class="w-full h-full flex flex-col hidden">
+      <div id="chatDirectView" class="w-full h-full min-h-0 flex-1 flex flex-col hidden">
         <!-- Direct Chat Header -->
         <div class="flex items-center justify-between pb-3 border-b border-white/10 mb-2">
           <div class="flex items-center gap-3">
@@ -257,7 +260,7 @@
         </div>
 
         <!-- Chat messages history -->
-        <div id="chatMessagesContainer" class="flex-1 overflow-y-auto space-y-3 p-2 no-scrollbar">
+        <div id="chatMessagesContainer" class="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 p-2 pb-6" style="-webkit-overflow-scrolling: touch; touch-action: pan-y;">
           <!-- Dynamically loaded messages with date dividers & moments -->
         </div>
 
@@ -324,7 +327,7 @@
       </div>
 
       <!-- Friends List with Gold Ring -->
-      <div id="modalFriendsList" class="flex-1 overflow-y-auto space-y-2 py-2 no-scrollbar">
+      <div id="modalFriendsList" class="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-2 py-2 pr-1" style="max-height: 52vh; -webkit-overflow-scrolling: touch; touch-action: pan-y;">
         <!-- Dynamically filled -->
       </div>
 
@@ -723,6 +726,11 @@
       return dateObj.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
     }
 
+    function scrollToMoment(idx) {
+      const elem = document.getElementById(`moment-${idx}`);
+      if (elem) elem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     // ==========================================
     // FEED (GIỐNG ẢNH 1 BÊN PHẢI)
     // ==========================================
@@ -769,15 +777,19 @@
               ` : ''}
             </div>
 
-            <!-- Author info row below photo (Jessica 36m) -->
+            <!-- Author info row below photo (Jessica 36m) + Next/Prev Jump -->
             <div class="flex items-center justify-between px-2 pt-1">
               <div class="flex items-center gap-2">
                 ${item.author.profile_picture ? 
-                  `<img src="${item.author.profile_picture}" class="w-6 h-6 rounded-full object-cover ring-1 ring-white/20">` :
-                  `<div class="w-6 h-6 rounded-full bg-gradient-to-tr from-pink-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-white">${(item.author.first_name || 'U')[0].toUpperCase()}</div>`
+                  `<img src="${item.author.profile_picture}" class="w-7 h-7 rounded-full object-cover ring-1 ring-white/20">` :
+                  `<div class="w-7 h-7 rounded-full bg-gradient-to-tr from-pink-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-white">${(item.author.first_name || 'U')[0].toUpperCase()}</div>`
                 }
                 <span class="text-xs font-bold text-white">${item.author.first_name} ${item.author.last_name || ''}</span>
-                <span class="text-[11px] text-slate-400 font-medium">${formatTimeAgo(item.date || item.timestamp)}</span>
+                <span class="text-[11px] text-slate-400 font-medium">• ${formatTimeAgo(item.date || item.timestamp)}</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                ${idx > 0 ? `<button onclick="scrollToMoment(${idx-1})" class="text-[10px] text-slate-400 hover:text-white px-2 py-0.5 rounded-full bg-white/5 active:scale-95">↑ Trước</button>` : ''}
+                ${idx < currentFeed.length - 1 ? `<button onclick="scrollToMoment(${idx+1})" class="text-[10px] text-amber-300 hover:text-amber-200 px-2.5 py-0.5 rounded-full bg-amber-400/10 active:scale-95 font-semibold">Tiếp ↓</button>` : ''}
               </div>
             </div>
 
