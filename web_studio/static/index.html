@@ -510,7 +510,11 @@
       } else if (tab === 'feed') {
         viewFeed.classList.remove('hidden');
         tabFeedBtn.className = "p-1 text-pink-400 transition-all active:scale-90";
-        renderFeedMoments();
+        if (allMomentsList.length === 0) {
+          loadFeed();
+        } else {
+          renderFeedMoments();
+        }
       } else if (tab === 'chat') {
         viewChat.classList.remove('hidden');
         tabChatBtn.className = "relative p-1 text-amber-400 transition-all active:scale-90";
@@ -776,15 +780,20 @@
     // 5. FEED / KHOẢNH KHẮC ENGINE (MATCHING IMAGE 3)
     // ==========================================
     async function loadFeed() {
+      const container = document.getElementById('feedMomentsList');
+      if (allMomentsList.length === 0) {
+        container.innerHTML = '<div class="text-xs text-slate-400 py-16 text-center flex flex-col items-center gap-3"><div class="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div><span>Đang tải khoảnh khắc bạn bè...</span></div>';
+      }
       try {
         const res = await fetch('/api/feed');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
-        allMomentsList = data.moments || [];
+        allMomentsList = data.feed || data.moments || [];
         renderFeedFilterChips();
         renderFeedMoments();
       } catch (err) {
         console.warn('Load feed error:', err);
+        container.innerHTML = '<div class="text-xs text-rose-400 py-16 text-center cursor-pointer" onclick="loadFeed()">Lỗi kết nối tải feed. Bấm để thử lại.</div>';
       }
     }
 
@@ -832,13 +841,14 @@
         return;
       }
 
-      container.innerHTML = filtered.map(m => {
+      container.innerHTML = filtered.map((m, idx) => {
         const author = m.author || {};
         const authorName = author.first_name ? `${author.first_name} ${author.last_name || ''}`.trim() : (author.username || 'Bạn bè');
         const authorUser = author.username ? `@${author.username}` : '';
-        const timeAgo = formatTimeAgo(m.date);
+        const timeAgo = formatTimeAgo(m.date || m.timestamp);
         const isVideo = m.video_url || (m.thumbnail_url && m.thumbnail_url.includes('video'));
         const mediaSrc = m.video_url || m.thumbnail_url;
+        const mid = m.moment_uid || m.id || idx;
 
         return `
           <!-- MOMENT CARD (EXACTLY AS IN IMAGE 3) -->
@@ -846,7 +856,7 @@
             
             <!-- Author Header -->
             <div class="flex items-center justify-between px-1">
-              <div class="flex items-center gap-2.5 cursor-pointer" onclick="openDirectChatFromMoment('${author.uid || ''}', '${authorName}', '${authorUser}', '${author.profile_picture || ''}')">
+              <div class="flex items-center gap-2.5 cursor-pointer" onclick="openChatByMomentIndex(${idx})">
                 <div class="relative w-9 h-9 rounded-full ring-2 ring-amber-400/40 p-0.5 overflow-hidden">
                   ${author.profile_picture ? 
                     `<img src="${author.profile_picture}" class="w-full h-full rounded-full object-cover">` : 
@@ -879,15 +889,15 @@
             <!-- Reactions Bar (IMAGE 3) -->
             <div class="flex items-center justify-between px-1 pt-0.5">
               <div class="flex items-center gap-2.5 glass-pill px-3 py-1.5 rounded-full">
-                <button onclick="sendMomentReaction(event, '${m.id}', '❤️')" class="text-lg hover:scale-125 active:scale-75 transition-all">❤️</button>
-                <button onclick="sendMomentReaction(event, '${m.id}', '🔥')" class="text-lg hover:scale-125 active:scale-75 transition-all">🔥</button>
-                <button onclick="sendMomentReaction(event, '${m.id}', '😂')" class="text-lg hover:scale-125 active:scale-75 transition-all">😂</button>
-                <button onclick="sendMomentReaction(event, '${m.id}', '🥺')" class="text-lg hover:scale-125 active:scale-75 transition-all">🥺</button>
-                <button onclick="sendMomentReaction(event, '${m.id}', '👏')" class="text-lg hover:scale-125 active:scale-75 transition-all">👏</button>
+                <button onclick="sendMomentReaction(event, '${mid}', '❤️')" class="text-lg hover:scale-125 active:scale-75 transition-all">❤️</button>
+                <button onclick="sendMomentReaction(event, '${mid}', '🔥')" class="text-lg hover:scale-125 active:scale-75 transition-all">🔥</button>
+                <button onclick="sendMomentReaction(event, '${mid}', '😂')" class="text-lg hover:scale-125 active:scale-75 transition-all">😂</button>
+                <button onclick="sendMomentReaction(event, '${mid}', '🥺')" class="text-lg hover:scale-125 active:scale-75 transition-all">🥺</button>
+                <button onclick="sendMomentReaction(event, '${mid}', '👏')" class="text-lg hover:scale-125 active:scale-75 transition-all">👏</button>
               </div>
 
               <!-- Button "Nhắn tin" (IMAGE 3) -->
-              <button onclick="openDirectChatFromMoment('${author.uid || ''}', '${authorName}', '${authorUser}', '${author.profile_picture || ''}')" class="flex items-center gap-1.5 glass-pill px-3.5 py-2 rounded-full text-xs font-bold text-slate-200 active:scale-95 transition-all hover:border-amber-400/40">
+              <button onclick="openChatByMomentIndex(${idx})" class="flex items-center gap-1.5 glass-pill px-3.5 py-2 rounded-full text-xs font-bold text-slate-200 active:scale-95 transition-all hover:border-amber-400/40">
                 <i data-lucide="message-circle" class="w-4 h-4 text-slate-300"></i>
                 <span>Nhắn tin</span>
               </button>
@@ -897,6 +907,14 @@
         `;
       }).join('');
       lucide.createIcons();
+    }
+
+    function openChatByMomentIndex(idx) {
+      const m = allMomentsList[idx];
+      if (!m) return;
+      const author = m.author || {};
+      const authorName = author.first_name ? `${author.first_name} ${author.last_name || ''}`.trim() : (author.username || 'Bạn bè');
+      openDirectChatFromMoment(author.uid || m.user, authorName, author.username || '', author.profile_picture || '');
     }
 
     function sendMomentReaction(event, momentId, emoji) {
@@ -1191,10 +1209,18 @@
     }
 
     // Helpers
-    function formatTimeAgo(dateStr) {
-      if (!dateStr) return 'vừa xong';
-      const d = new Date(dateStr);
-      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+    function formatTimeAgo(dateVal) {
+      if (!dateVal) return 'vừa xong';
+      let ms = 0;
+      if (typeof dateVal === 'object' && dateVal._seconds) {
+        ms = dateVal._seconds * 1000;
+      } else if (typeof dateVal === 'number') {
+        ms = dateVal > 1e11 ? dateVal : dateVal * 1000;
+      } else {
+        const d = new Date(dateVal);
+        ms = isNaN(d.getTime()) ? Date.now() : d.getTime();
+      }
+      const diffSec = Math.floor((Date.now() - ms) / 1000);
       if (diffSec < 60) return 'vừa xong';
       const diffMin = Math.floor(diffSec / 60);
       if (diffMin < 60) return `${diffMin} phút trước`;

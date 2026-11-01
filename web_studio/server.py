@@ -223,12 +223,12 @@ def parse_moment_timestamp(val):
 def get_feed():
     global FEED_CACHE
     if not client.is_authenticated():
-        return jsonify({"feed": []})
+        return jsonify({"feed": [], "moments": []})
 
     now = time.time()
     # Cache for 60 seconds
     if now - FEED_CACHE["timestamp"] < 60 and FEED_CACHE["feed"]:
-        return jsonify({"feed": FEED_CACHE["feed"]})
+        return jsonify({"feed": FEED_CACHE["feed"], "moments": FEED_CACHE["feed"]})
 
     try:
         # Create map of friends for fast profile lookup
@@ -383,10 +383,10 @@ def get_feed():
         feed_items.sort(key=lambda x: x.get("timestamp", 0.0), reverse=True)
 
         FEED_CACHE = {"timestamp": now, "feed": feed_items}
-        return jsonify({"feed": feed_items})
+        return jsonify({"feed": feed_items, "moments": feed_items})
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"feed": [], "error": str(e)})
+        return jsonify({"feed": [], "moments": [], "error": str(e)})
 
 @app.route("/api/moments/react", methods=["POST"])
 def react_moment():
