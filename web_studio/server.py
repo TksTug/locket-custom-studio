@@ -1,5 +1,12 @@
 import os
 import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import io
 import time
 import json
@@ -520,5 +527,5 @@ def post_moment():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
-    print(f"🚀 Locket Custom Studio Web is running at: http://localhost:{port}")
+    print(f">> Locket Custom Studio Web is running at: http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)

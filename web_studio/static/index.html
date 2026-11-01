@@ -490,6 +490,7 @@
         videoElem.pause();
         imgElem.classList.remove('hidden');
         statusPill.classList.add('hidden');
+        imgElem.src = URL.createObjectURL(file);
         renderImagePreview();
       }
       lucide.createIcons();
@@ -534,7 +535,7 @@
       formData.append('frame_type', currentFrame);
       formData.append('weather_enabled', weatherEnabled ? 'true' : 'false');
       formData.append('weather_style', 'pill');
-      formData.append('weather_pos', 'top_right');
+      formData.append('weather_pos', 'top_left');
       formData.append('weather_city', 'TP. Hồ Chí Minh');
       formData.append('caption', document.getElementById('cameraCaptionInput').value.trim());
 
@@ -572,6 +573,7 @@
         formData.append('frame_type', currentFrame);
         formData.append('weather_enabled', weatherEnabled ? 'true' : 'false');
         formData.append('weather_style', 'pill');
+        formData.append('weather_pos', 'top_left');
         formData.append('weather_city', 'TP. Hồ Chí Minh');
 
         if (selectedFriendUids.length > 0 && selectedFriendUids.length < friendsList.length) {
@@ -605,6 +607,7 @@
 
       try {
         const res = await fetch('/api/feed');
+        if (!res.ok) throw new Error('Mã phản hồi server: ' + res.status);
         const data = await res.json();
         currentFeed = data.feed || [];
 
@@ -697,6 +700,7 @@
 
       try {
         const res = await fetch('/api/chat/conversations');
+        if (!res.ok) throw new Error('Mã phản hồi server: ' + res.status);
         const data = await res.json();
         const convs = data.conversations || [];
         document.getElementById('chatCountText').innerText = `${convs.length} cuộc trò chuyện`;
