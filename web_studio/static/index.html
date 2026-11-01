@@ -813,23 +813,6 @@
         container.innerHTML = '<div class="text-xs text-rose-400 py-8 text-center">Lỗi tải khoảnh khắc: ' + e + '</div>';
       }
     }
-                <button onclick="sendReaction('${item.moment_uid}', '👏')" class="glass-pill px-3 py-1.5 rounded-full text-sm active:scale-90 transition-all">👏</button>
-              </div>
-
-              <!-- Reply message button -->
-              <button onclick="openDirectChatFromMoment('${item.author.uid}', '${item.author.first_name}', '${item.author.username}', '${item.author.profile_picture || ''}')" class="glass-pill px-3 py-1.5 rounded-full text-xs font-semibold text-slate-300 flex items-center gap-1.5 active:scale-95 transition-all">
-                <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                <span>Nhắn tin</span>
-              </button>
-            </div>
-          </div>
-        `).join('');
-
-        lucide.createIcons();
-      } catch (e) {
-        container.innerHTML = '<div class="text-xs text-rose-400 py-6 text-center">Lỗi tải khoảnh khắc: ' + e + '</div>';
-      }
-    }
 
     async function sendReaction(momentUid, emoji) {
       try {
