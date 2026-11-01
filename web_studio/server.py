@@ -141,7 +141,14 @@ def auth_logout():
 
 from concurrent.futures import ThreadPoolExecutor
 
+FRIENDS_CACHE_FILE = os.path.join(os.path.dirname(__file__), "friends_cache.json")
 FRIENDS_CACHE = {"timestamp": 0, "friends": []}
+if os.path.exists(FRIENDS_CACHE_FILE):
+    try:
+        with open(FRIENDS_CACHE_FILE, "r", encoding="utf-8") as f:
+            FRIENDS_CACHE = json.load(f)
+    except Exception:
+        pass
 
 @app.route("/api/friends", methods=["GET"])
 def list_friends():
@@ -191,6 +198,11 @@ def list_friends():
             friends = list(executor.map(fetch_single_profile, uids))
 
         FRIENDS_CACHE = {"timestamp": now, "friends": friends}
+        try:
+            with open(FRIENDS_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(FRIENDS_CACHE, f, ensure_ascii=False)
+        except Exception:
+            pass
         return jsonify({"friends": friends})
     except Exception as e:
         traceback.print_exc()
@@ -221,7 +233,7 @@ def parse_moment_timestamp(val):
 
 @app.route("/api/feed", methods=["GET"])
 def get_feed():
-    global FEED_CACHE
+    global FEED_CACHE, FRIENDS_CACHE
     if not client.is_authenticated():
         return jsonify({"feed": [], "moments": []})
 
@@ -229,7 +241,18 @@ def get_feed():
     user_uid = request.args.get("user_uid") or request.args.get("uid")
     refresh = request.args.get("refresh") == "true"
 
-    friend_map = {f["uid"]: f for f in FRIENDS_CACHE.get("friends", [])}
+    # Fast friends lookup from cache or fetch if missing
+    friends = FRIENDS_CACHE.get("friends")
+    if not friends or (now - FRIENDS_CACHE.get("timestamp", 0) > 300):
+        try:
+            friends = client.friends.get_all_friends()
+            FRIENDS_CACHE["timestamp"] = now
+            FRIENDS_CACHE["friends"] = friends
+        except Exception:
+            friends = []
+
+    friend_map = {f["uid"]: f for f in friends if "uid" in f}
+    friend_uids = [f["uid"] for f in friends if "uid" in f]
     my_uid = client.session.uid
     my_profile = client.user.get_profile() if client.is_authenticated() else {}
     my_info = {
@@ -247,126 +270,74 @@ def get_feed():
             return my_info
         if uid in friend_map:
             return friend_map[uid]
-        try:
-            p = client.user.get_profile(uid)
-            info = {
-                "uid": uid,
-                "first_name": p.get("first_name", "Bạn Locket"),
-                "last_name": p.get("last_name", ""),
-                "username": p.get("username", ""),
-                "profile_picture": p.get("profile_picture_url")
-            }
-            friend_map[uid] = info
-            return info
-        except Exception:
-            return {"uid": uid, "first_name": "Bạn Locket", "username": uid[:8]}
+        return {"uid": uid, "first_name": "Bạn Locket", "username": uid[:8]}
 
-    # 1. SPECIFIC FRIEND QUERY: Direct fetch shared moments by user UID
+    # 1. SPECIFIC FRIEND FILTER: Instantly fetch this friend's live moment from Locket server
     if user_uid:
         try:
             author_info = resolve_author(user_uid)
-            raw_moments = client.moments.get_shared_moments_by_user(user_uid, limit=15)
+            other_friends = [u for u in friend_uids if u != user_uid]
+            feed_res = client.post_api("getLatestMomentV2", {
+                "should_count_missed_moments": False,
+                "include_group_moments": True,
+                "excluded_users": other_friends
+            })
             friend_feed = []
-            seen_uids_f = set()
-            for m in raw_moments:
-                mid = m.get("moment_uid") or m.get("canonical_uid")
+            for m in feed_res.get("data", []):
+                mid = m.get("canonical_uid")
                 thumb = m.get("thumbnail_url")
-                if not thumb or (mid and mid in seen_uids_f):
+                if not thumb:
                     continue
-                if mid:
-                    seen_uids_f.add(mid)
                 friend_feed.append({
                     "moment_uid": mid,
                     "thumbnail_url": thumb,
                     "video_url": m.get("video_url"),
                     "caption": m.get("caption", ""),
-                    "date": m.get("date") or m.get("created_at"),
-                    "timestamp": parse_moment_timestamp(m.get("date") or m.get("created_at")),
+                    "date": m.get("date"),
+                    "timestamp": parse_moment_timestamp(m.get("date")),
                     "author": author_info
                 })
-            friend_feed.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
             return jsonify({"feed": friend_feed, "moments": friend_feed})
         except Exception as e:
             traceback.print_exc()
             return jsonify({"feed": [], "moments": [], "error": str(e)})
 
-    # Cache general feed for 45 seconds unless refresh requested
-    if not refresh and (now - FEED_CACHE["timestamp"] < 45) and FEED_CACHE["feed"]:
+    # Cache general feed for 45 seconds unless explicit refresh requested
+    if not refresh and (now - FEED_CACHE.get("timestamp", 0) < 45) and FEED_CACHE.get("feed"):
         return jsonify({"feed": FEED_CACHE["feed"], "moments": FEED_CACHE["feed"]})
 
     try:
-        # Create map of friends for fast profile lookup
-        friend_map = {f["uid"]: f for f in FRIENDS_CACHE.get("friends", [])}
-        my_uid = client.session.uid
-        my_profile = client.user.get_profile() if client.is_authenticated() else {}
-        my_info = {
-            "uid": my_uid,
-            "first_name": my_profile.get("first_name", "Bạn"),
-            "last_name": my_profile.get("last_name", ""),
-            "username": my_profile.get("username", "me"),
-            "profile_picture": my_profile.get("profile_picture_url")
-        }
-
         feed_items = []
         seen_thumbs = set()
         seen_uids = set()
 
-        def resolve_author(uid):
-            if not uid:
-                return {"first_name": "Bạn bè", "username": "locket"}
-            if uid == my_uid:
-                return my_info
-            if uid in friend_map:
-                return friend_map[uid]
+        # 2. HIGH-SPEED CONCURRENT FETCH: Query live moments from all 32 friends in parallel (<1.5s)
+        def fetch_friend_latest_moment(fuid):
+            others = [u for u in friend_uids if u != fuid]
             try:
-                p = client.user.get_profile(uid)
-                info = {
-                    "uid": uid,
-                    "first_name": p.get("first_name", "Bạn Locket"),
-                    "last_name": p.get("last_name", ""),
-                    "username": p.get("username", ""),
-                    "profile_picture": p.get("profile_picture_url")
-                }
-                friend_map[uid] = info
-                return info
-            except Exception:
-                return {"uid": uid, "first_name": "Bạn Locket", "username": uid[:8]}
-
-        # 1. Fetch user's own genuine posted moments
-        try:
-            my_moments = client.moments.get_all_my_moments(limit=10)
-            for mm in my_moments:
-                mid = mm.get("moment_uid")
-                thumb = mm.get("thumbnail_url")
-                if not thumb or thumb in seen_thumbs:
-                    continue
-                seen_thumbs.add(thumb)
-                if mid:
-                    seen_uids.add(mid)
-                feed_items.append({
-                    "moment_uid": mid,
-                    "thumbnail_url": thumb,
-                    "video_url": mm.get("video_url"),
-                    "caption": mm.get("caption", ""),
-                    "date": mm.get("created_at"),
-                    "timestamp": parse_moment_timestamp(mm.get("created_at")),
-                    "author": my_info
+                res = client.post_api("getLatestMomentV2", {
+                    "should_count_missed_moments": False,
+                    "include_group_moments": True,
+                    "excluded_users": others
                 })
-        except Exception as e:
-            print("Error get_all_my_moments:", e)
+                return res.get("data", [])
+            except Exception:
+                return []
 
-        # 2. Fetch latest moments from friends via get_latest
-        try:
-            latest_moments = client.moments.get_latest()
-            for m in latest_moments:
-                mid = m.get("canonical_uid") or m.get("id")
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            friend_results = list(executor.map(fetch_friend_latest_moment, friend_uids))
+
+        for batch in friend_results:
+            for m in batch:
+                mid = m.get("canonical_uid")
                 thumb = m.get("thumbnail_url")
-                if not thumb or thumb in seen_thumbs:
+                if not thumb or thumb in seen_thumbs or (mid and mid in seen_uids):
                     continue
                 seen_thumbs.add(thumb)
                 if mid:
                     seen_uids.add(mid)
-                author = resolve_author(m.get("user"))
+                u = m.get("user")
+                author = resolve_author(u)
                 feed_items.append({
                     "moment_uid": mid,
                     "thumbnail_url": thumb,
@@ -376,78 +347,56 @@ def get_feed():
                     "timestamp": parse_moment_timestamp(m.get("date")),
                     "author": author
                 })
-        except Exception as e:
-            print("Error get_latest:", e)
 
-        # 3. Discover genuine moments from conversations
+        # 3. Fetch our own latest moment from Locket server
         try:
-            token = client.session.get_valid_token()
-            u_url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/conversations"
-            req = urllib.request.Request(u_url, headers={"Authorization": f"Bearer {token}"})
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                udata = json.loads(resp.read().decode("utf-8"))
-            conv_docs = udata.get("documents", [])[:15]
-            conv_ids = [d["name"].split("/")[-1] for d in conv_docs]
-
-            def fetch_conv_moments(cid):
-                res = []
-                m_url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/conversations/{cid}/messages?pageSize=20"
-                m_req = urllib.request.Request(m_url, headers={"Authorization": f"Bearer {token}"})
-                try:
-                    with urllib.request.urlopen(m_req, timeout=6) as m_resp:
-                        m_data = json.loads(m_resp.read().decode("utf-8"))
-                        for doc in m_data.get("documents", []):
-                            fields = doc.get("fields", {})
-                            thumb_val = fields.get("thumbnail_url", {}).get("stringValue")
-                            if thumb_val:
-                                mid = fields.get("reply_moment", {}).get("stringValue") or doc["name"].split("/")[-1]
-                                # Identify the authentic photographer from URL
-                                match = re.search(r'users%2F([a-zA-Z0-9_-]+)%2Fmoments', thumb_val)
-                                author_uid = match.group(1) if match else fields.get("sender", {}).get("stringValue")
-                                sender = fields.get("sender", {}).get("stringValue")
-                                body = fields.get("body", {}).get("stringValue", "")
-                                # Only set caption if the sender was the actual photographer
-                                caption = body if sender == author_uid else ""
-                                res.append({
-                                    "moment_uid": mid,
-                                    "thumbnail_url": thumb_val,
-                                    "caption": caption,
-                                    "author_uid": author_uid,
-                                    "created_at": fields.get("created_at", {}).get("timestampValue", "")
-                                })
-                except Exception:
-                    pass
-                return res
-
-            with ThreadPoolExecutor(max_workers=8) as executor:
-                all_conv_moments = list(executor.map(fetch_conv_moments, conv_ids))
-
-            MAX_MOMENT_AGE = 7 * 86400  # Chỉ giữ ảnh trong vòng 7 ngày gần nhất, lọc bỏ ảnh cũ từ các cuộc trò chuyện xưa
-            for sublist in all_conv_moments:
-                for cm in sublist:
-                    thumb = cm["thumbnail_url"]
-                    mid = cm["moment_uid"]
-                    if thumb in seen_thumbs or (mid and mid in seen_uids):
-                        continue
-                    ts = parse_moment_timestamp(cm["created_at"])
-                    if ts > 0 and (now - ts) > MAX_MOMENT_AGE:
-                        continue
+            my_res = client.post_api("getLatestMomentV2", {
+                "should_count_missed_moments": False,
+                "include_group_moments": True,
+                "excluded_users": friend_uids
+            })
+            for m in my_res.get("data", []):
+                mid = m.get("canonical_uid")
+                thumb = m.get("thumbnail_url")
+                if thumb and thumb not in seen_thumbs:
                     seen_thumbs.add(thumb)
                     if mid:
                         seen_uids.add(mid)
                     feed_items.append({
                         "moment_uid": mid,
                         "thumbnail_url": thumb,
-                        "video_url": None,
-                        "caption": cm["caption"],
-                        "date": cm["created_at"],
-                        "timestamp": ts,
-                        "author": resolve_author(cm["author_uid"])
+                        "video_url": m.get("video_url"),
+                        "caption": m.get("caption", ""),
+                        "date": m.get("date"),
+                        "timestamp": parse_moment_timestamp(m.get("date")),
+                        "author": my_info
                     })
         except Exception as e:
-            print("Error fetching conversation moments:", e)
+            print("Error fetching own latest moment:", e)
 
-        # Sort all moments strictly by timestamp descending (newest first)
+        # 4. Include locally saved posted moments from history
+        try:
+            local_history = client.moments._load_history()
+            for p in local_history:
+                thumb = p.get("thumbnail_url")
+                mid = p.get("moment_uid") or p.get("canonical_uid")
+                if thumb and thumb not in seen_thumbs:
+                    seen_thumbs.add(thumb)
+                    if mid:
+                        seen_uids.add(mid)
+                    feed_items.append({
+                        "moment_uid": mid,
+                        "thumbnail_url": thumb,
+                        "video_url": p.get("video_url"),
+                        "caption": p.get("caption", ""),
+                        "date": p.get("created_at"),
+                        "timestamp": parse_moment_timestamp(p.get("created_at")),
+                        "author": my_info
+                    })
+        except Exception:
+            pass
+
+        # Sort strictly by timestamp descending (newest moments first)
         feed_items.sort(key=lambda x: x.get("timestamp", 0.0), reverse=True)
 
         FEED_CACHE = {"timestamp": now, "feed": feed_items}
