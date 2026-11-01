@@ -370,15 +370,22 @@
           <!-- Phone Widget Mockup Frame -->
           <div class="locket-phone-mockup bg-slate-900 border-4 border-slate-800 shadow-2xl relative">
             <img id="previewImage" src="/test_sample.png" alt="Preview" class="w-full h-full object-cover">
+            <video id="previewVideo" autoplay loop muted playsinline class="w-full h-full object-cover hidden"></video>
             
             <!-- Widget corner badge / timestamp -->
-            <div class="absolute top-3.5 left-4 flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
+            <div class="absolute top-3.5 left-4 flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 z-10">
               <div class="w-1.5 h-1.5 rounded-full bg-pink-500 animate-ping"></div>
               <span class="text-[10px] font-bold text-white tracking-wide">LOCKET</span>
             </div>
 
+            <!-- Video badge indicator -->
+            <div id="mockupVideoIndicator" class="hidden absolute top-3.5 right-4 flex items-center gap-1.5 bg-amber-500/80 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/20 z-10">
+              <i data-lucide="play" class="w-3 h-3 text-white fill-white"></i>
+              <span class="text-[9px] font-bold text-white tracking-wider uppercase font-mono">LIVE VIDEO</span>
+            </div>
+
             <!-- Caption Overlay if standard -->
-            <div id="mockupCaptionTag" class="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 flex items-center justify-center text-center">
+            <div id="mockupCaptionTag" class="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 flex items-center justify-center text-center z-10">
               <span id="mockupCaptionText" class="text-xs font-medium text-white">✨ Locket Custom Studio</span>
             </div>
           </div>
@@ -588,6 +595,22 @@
           content.classList.add('hidden');
         }
       });
+
+      // Update widget preview element based on tab
+      const imgElem = document.getElementById('previewImage');
+      const videoElem = document.getElementById('previewVideo');
+      const videoIndicator = document.getElementById('mockupVideoIndicator');
+
+      if (tab === 'video' && selectedVideoFile) {
+        imgElem.classList.add('hidden');
+        videoElem.classList.remove('hidden');
+        videoIndicator.classList.remove('hidden');
+      } else if (tab === 'photo') {
+        videoElem.classList.add('hidden');
+        imgElem.classList.remove('hidden');
+        videoIndicator.classList.add('hidden');
+      }
+
       lucide.createIcons();
     }
 
@@ -634,6 +657,13 @@
       const file = event.target.files[0];
       if (file) {
         selectedImageFile = file;
+        const imgElem = document.getElementById('previewImage');
+        const videoElem = document.getElementById('previewVideo');
+        const videoIndicator = document.getElementById('mockupVideoIndicator');
+        videoElem.pause();
+        videoElem.classList.add('hidden');
+        imgElem.classList.remove('hidden');
+        videoIndicator.classList.add('hidden');
         triggerUpdatePreview();
       }
     }
@@ -647,7 +677,19 @@
         document.getElementById('videoFileName').innerText = file.name;
         const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
         document.getElementById('videoFileStats').innerText = `${sizeMb} MB • Tự động nén HEVC <6MB`;
-        triggerUpdatePreview();
+
+        // Direct instant video preview
+        const imgElem = document.getElementById('previewImage');
+        const videoElem = document.getElementById('previewVideo');
+        const videoIndicator = document.getElementById('mockupVideoIndicator');
+
+        const objectUrl = URL.createObjectURL(file);
+        videoElem.src = objectUrl;
+        imgElem.classList.add('hidden');
+        videoElem.classList.remove('hidden');
+        videoIndicator.classList.remove('hidden');
+        videoElem.play().catch(e => console.log('Autoplay handled:', e));
+        lucide.createIcons();
       }
     }
 
