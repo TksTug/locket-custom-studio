@@ -1,7 +1,8 @@
 services:
   - type: web
     name: locket-custom-studio
-    env: docker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     region: singapore
     envVars:
