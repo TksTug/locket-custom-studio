@@ -285,9 +285,9 @@
             Bộ lọc: Gốc
           </div>
 
-          <!-- 1. TEXT OVERLAY AREA: Gõ chữ đè trực tiếp lên ảnh (Chạm vào bất kỳ vị trí nào trên ảnh) -->
-          <div id="cameraCaptionOverlay" class="absolute inset-0 z-20 flex items-center justify-center p-4 cursor-pointer pointer-events-auto" onclick="handleFrameCaptionClick(event)">
-            <div id="cameraCaptionBox" class="max-w-[85%] px-4 py-2 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10 shadow-lg text-center flex items-center justify-center transition-all">
+          <!-- 1. TEXT OVERLAY AREA: Gõ chữ đè trực tiếp ở DƯỚI ĐÁY ẢNH (Chuẩn Locket) -->
+          <div id="cameraCaptionOverlay" class="absolute inset-0 z-20 flex items-end justify-center p-4 pb-6 cursor-pointer pointer-events-auto" onclick="handleFrameCaptionClick(event)">
+            <div id="cameraCaptionBox" class="max-w-[85%] px-4 py-2 rounded-2xl bg-black/75 backdrop-blur-md border border-white/10 shadow-lg text-center flex items-center justify-center transition-all mb-1">
               <input type="text" id="cameraCaptionInput" placeholder="Chạm để thêm chú thích..." class="w-full bg-transparent text-center text-xs font-semibold text-white placeholder-white/60 focus:outline-none caret-amber-400 font-sans" oninput="handleCaptionInput()">
             </div>
           </div>
@@ -1347,25 +1347,48 @@
       row.innerHTML = html;
     }
 
-    function filterFeedByFriend(uid) {
+    async function filterFeedByFriend(uid) {
       activeFeedFilterUid = uid;
       renderFeedFilterChips();
-      renderFeedMoments();
+
+      const container = document.getElementById('feedMomentsList');
+      container.innerHTML = '<div class="text-xs text-slate-400 py-16 text-center flex flex-col items-center gap-3"><div class="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div><span>Đang tải khoảnh khắc...</span></div>';
+
+      try {
+        const url = uid ? `/api/feed?user_uid=${uid}` : `/api/feed?refresh=true`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const moments = data.feed || data.moments || [];
+        if (uid) {
+          renderFeedMoments(moments);
+        } else {
+          allMomentsList = moments;
+          renderFeedMoments(allMomentsList);
+        }
+      } catch (err) {
+        console.warn('Filter friend moments error:', err);
+        renderFeedMoments();
+      }
     }
 
-    function renderFeedMoments() {
+    function renderFeedMoments(momentsList = null) {
       const container = document.getElementById('feedMomentsList');
-      let filtered = allMomentsList;
-      if (activeFeedFilterUid) {
+      let filtered = momentsList !== null ? momentsList : allMomentsList;
+      if (momentsList === null && activeFeedFilterUid) {
         filtered = allMomentsList.filter(m => m.user === activeFeedFilterUid || (m.author && m.author.uid === activeFeedFilterUid));
       }
 
       if (filtered.length === 0) {
         container.innerHTML = `
-          <div class="text-center py-16 space-y-2">
-            <i data-lucide="camera-off" class="w-12 h-12 text-slate-600 mx-auto"></i>
-            <p class="text-sm font-bold text-slate-400">Chưa có khoảnh khắc nào</p>
-            <p class="text-xs text-slate-500">Hãy là người đầu tiên chụp và gửi cho bạn bè!</p>
+          <div class="text-center py-16 space-y-3">
+            <div class="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-slate-400 text-2xl shadow-inner">📷</div>
+            <p class="text-sm font-bold text-slate-300">Chưa có khoảnh khắc nào</p>
+            <p class="text-xs text-slate-500 max-w-xs mx-auto">Bạn này chưa đăng ảnh mới hoặc ảnh đã cũ. Bấm để làm mới dữ liệu!</p>
+            <button onclick="loadFeed(true)" class="px-4 py-2 rounded-full glass-pill text-xs font-bold text-amber-300 hover:text-white transition-all shadow-md active:scale-95 flex items-center gap-1.5 mx-auto">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span>Làm mới Locket</span>
+            </button>
           </div>
         `;
         lucide.createIcons();

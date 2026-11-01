@@ -226,8 +226,72 @@ def get_feed():
         return jsonify({"feed": [], "moments": []})
 
     now = time.time()
-    # Cache for 60 seconds
-    if now - FEED_CACHE["timestamp"] < 60 and FEED_CACHE["feed"]:
+    user_uid = request.args.get("user_uid") or request.args.get("uid")
+    refresh = request.args.get("refresh") == "true"
+
+    friend_map = {f["uid"]: f for f in FRIENDS_CACHE.get("friends", [])}
+    my_uid = client.session.uid
+    my_profile = client.user.get_profile() if client.is_authenticated() else {}
+    my_info = {
+        "uid": my_uid,
+        "first_name": my_profile.get("first_name", "Bạn"),
+        "last_name": my_profile.get("last_name", ""),
+        "username": my_profile.get("username", "me"),
+        "profile_picture": my_profile.get("profile_picture_url")
+    }
+
+    def resolve_author(uid):
+        if not uid:
+            return {"first_name": "Bạn bè", "username": "locket"}
+        if uid == my_uid:
+            return my_info
+        if uid in friend_map:
+            return friend_map[uid]
+        try:
+            p = client.user.get_profile(uid)
+            info = {
+                "uid": uid,
+                "first_name": p.get("first_name", "Bạn Locket"),
+                "last_name": p.get("last_name", ""),
+                "username": p.get("username", ""),
+                "profile_picture": p.get("profile_picture_url")
+            }
+            friend_map[uid] = info
+            return info
+        except Exception:
+            return {"uid": uid, "first_name": "Bạn Locket", "username": uid[:8]}
+
+    # 1. SPECIFIC FRIEND QUERY: Direct fetch shared moments by user UID
+    if user_uid:
+        try:
+            author_info = resolve_author(user_uid)
+            raw_moments = client.moments.get_shared_moments_by_user(user_uid, limit=15)
+            friend_feed = []
+            seen_uids_f = set()
+            for m in raw_moments:
+                mid = m.get("moment_uid") or m.get("canonical_uid")
+                thumb = m.get("thumbnail_url")
+                if not thumb or (mid and mid in seen_uids_f):
+                    continue
+                if mid:
+                    seen_uids_f.add(mid)
+                friend_feed.append({
+                    "moment_uid": mid,
+                    "thumbnail_url": thumb,
+                    "video_url": m.get("video_url"),
+                    "caption": m.get("caption", ""),
+                    "date": m.get("date") or m.get("created_at"),
+                    "timestamp": parse_moment_timestamp(m.get("date") or m.get("created_at")),
+                    "author": author_info
+                })
+            friend_feed.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+            return jsonify({"feed": friend_feed, "moments": friend_feed})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"feed": [], "moments": [], "error": str(e)})
+
+    # Cache general feed for 45 seconds unless refresh requested
+    if not refresh and (now - FEED_CACHE["timestamp"] < 45) and FEED_CACHE["feed"]:
         return jsonify({"feed": FEED_CACHE["feed"], "moments": FEED_CACHE["feed"]})
 
     try:
