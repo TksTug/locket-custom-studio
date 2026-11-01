@@ -358,11 +358,15 @@ def get_feed():
             with ThreadPoolExecutor(max_workers=8) as executor:
                 all_conv_moments = list(executor.map(fetch_conv_moments, conv_ids))
 
+            MAX_MOMENT_AGE = 7 * 86400  # Chỉ giữ ảnh trong vòng 7 ngày gần nhất, lọc bỏ ảnh cũ từ các cuộc trò chuyện xưa
             for sublist in all_conv_moments:
                 for cm in sublist:
                     thumb = cm["thumbnail_url"]
                     mid = cm["moment_uid"]
                     if thumb in seen_thumbs or (mid and mid in seen_uids):
+                        continue
+                    ts = parse_moment_timestamp(cm["created_at"])
+                    if ts > 0 and (now - ts) > MAX_MOMENT_AGE:
                         continue
                     seen_thumbs.add(thumb)
                     if mid:
@@ -373,7 +377,7 @@ def get_feed():
                         "video_url": None,
                         "caption": cm["caption"],
                         "date": cm["created_at"],
-                        "timestamp": parse_moment_timestamp(cm["created_at"]),
+                        "timestamp": ts,
                         "author": resolve_author(cm["author_uid"])
                     })
         except Exception as e:

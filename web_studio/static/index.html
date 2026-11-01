@@ -248,31 +248,27 @@
             </button>
           </div>
 
-          <!-- Active Filter Pill Indicator in bottom-left -->
-          <div id="activeFilterPill" class="absolute bottom-4 left-4 z-20 glass-pill px-2.5 py-1 rounded-full text-[10px] font-bold text-amber-300 shadow-md">
+          <!-- Active Filter Pill Indicator in bottom-left (Only shown when filter active) -->
+          <div id="activeFilterPill" class="hidden absolute bottom-4 left-4 z-20 glass-pill px-2.5 py-1 rounded-full text-[10px] font-bold text-amber-300 shadow-md">
             Bộ lọc: Gốc
           </div>
 
-          <!-- Bottom Caption Overlay Tag inside frame (Custom Styling) -->
-          <div id="cameraCaptionTag" class="hidden absolute bottom-4 left-4 right-4 bg-black/75 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 flex items-center justify-center text-center z-10 shadow-lg cursor-pointer" onclick="focusCaptionInput()">
-            <span id="cameraCaptionText" class="text-xs font-semibold text-white"></span>
+          <!-- 1. TEXT OVERLAY AREA: Gõ chữ đè trực tiếp lên ảnh (Chạm vào bất kỳ vị trí nào trên ảnh) -->
+          <div id="cameraCaptionOverlay" class="absolute inset-0 z-20 flex items-center justify-center p-4 cursor-pointer pointer-events-auto" onclick="handleFrameCaptionClick(event)">
+            <div id="cameraCaptionBox" class="max-w-[85%] px-4 py-2 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10 shadow-lg text-center flex items-center justify-center transition-all">
+              <input type="text" id="cameraCaptionInput" placeholder="Chạm để thêm chú thích..." class="w-full bg-transparent text-center text-xs font-semibold text-white placeholder-white/60 focus:outline-none caret-amber-400 font-sans" oninput="handleCaptionInput()">
+            </div>
           </div>
         </div>
 
-        <!-- REAL-TIME GOLD FILTER SELECTOR BAR (Vuốt hoặc bấm chọn bộ lọc) -->
-        <div class="w-full max-w-[360px] flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-1">
+        <!-- 3. REAL-TIME GOLD FILTER SELECTOR BAR (CHỈ HIỆN Ở MÀN HÌNH HẬU KỲ SAU KHI CHỤP XONG) -->
+        <div id="postCaptureFilterBar" class="hidden w-full max-w-[360px] flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-1">
           <button onclick="applyGoldFilter('filter-none', 'Gốc')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-amber-400 border border-amber-400/40 shadow-sm active:scale-95">✨ Gốc</button>
           <button onclick="applyGoldFilter('filter-lomo', 'LOMO')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎬 LOMO</button>
           <button onclick="applyGoldFilter('filter-cyberpunk', 'Cyberpunk')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">⚡ Cyberpunk</button>
           <button onclick="applyGoldFilter('filter-film35mm', 'Film 35mm')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎞️ Film 35mm</button>
           <button onclick="applyGoldFilter('filter-vintage', 'Retro Vintage')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">📻 Retro</button>
           <button onclick="applyGoldFilter('filter-warmglow', 'Warm Glow')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌅 Warm Glow</button>
-        </div>
-
-        <!-- Caption Input Bar + NÚT MÀU SẮC CHÚ THÍCH (CAPTION STYLING) -->
-        <div id="captionInputBar" class="w-full max-w-[360px] flex items-center gap-2 glass-pill px-4 py-2 rounded-2xl border border-white/10">
-          <input type="text" id="cameraCaptionInput" placeholder="Viết chú thích cho khoảnh khắc..." class="flex-1 bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none" oninput="handleCaptionInput()">
-          <button onclick="openCaptionStyleModal()" class="text-xs font-bold px-2 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-md hover:scale-105 active:scale-95 transition-all">Màu sắc</button>
         </div>
 
         <!-- POST-CAPTURE: Recipient Selection Matrix (SPEC I.2 & LOCKET GROUPS) -->
@@ -745,6 +741,15 @@
         </div>
       </div>
 
+      <!-- Caption Styling in Settings -->
+      <button onclick="closeSettingsModal(); openCaptionStyleModal();" class="w-full p-3 rounded-2xl glass-pill flex items-center justify-between text-xs font-bold text-white hover:border-amber-400/40 active:scale-95 transition-all">
+        <div class="flex items-center gap-2">
+          <i data-lucide="type" class="w-4 h-4 text-amber-400"></i>
+          <span>Tùy biến Màu sắc & Chữ Chú thích</span>
+        </div>
+        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+      </button>
+
       <!-- Custom App Icons (Đổi Icon ngoài màn hình) -->
       <div class="space-y-2">
         <label class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
@@ -998,10 +1003,12 @@
     }
 
     function applyCaptionStyleToTag() {
-      const tag = document.getElementById('cameraCaptionTag');
-      const text = document.getElementById('cameraCaptionText');
-      tag.className = `absolute bottom-4 left-4 right-4 px-3.5 py-2 rounded-2xl flex items-center justify-center text-center z-10 shadow-lg cursor-pointer ${captionBgClass}`;
-      text.className = `text-xs ${captionColorClass} ${captionFontClass}`;
+      const box = document.getElementById('cameraCaptionBox');
+      const input = document.getElementById('cameraCaptionInput');
+      if (box && input) {
+        box.className = `max-w-[85%] px-4 py-2 rounded-2xl ${captionBgClass} shadow-lg text-center flex items-center justify-center transition-all`;
+        input.className = `w-full bg-transparent text-center text-xs font-semibold ${captionColorClass} ${captionFontClass} placeholder-white/60 focus:outline-none caret-amber-400`;
+      }
     }
 
     // ==========================================
@@ -1209,6 +1216,8 @@
       }
       document.getElementById('btnRetakeMedia').classList.remove('hidden');
       document.getElementById('recipientMatrixContainer').classList.remove('hidden');
+      // Show filter selector bar ONLY in Post-Capture state
+      document.getElementById('postCaptureFilterBar').classList.remove('hidden');
 
       // Transform Shutter button into Send button
       const shutterRing = document.getElementById('shutterRing');
@@ -1230,7 +1239,7 @@
       document.getElementById('cameraPreviewVideo').classList.add('hidden');
       document.getElementById('btnRetakeMedia').classList.add('hidden');
       document.getElementById('recipientMatrixContainer').classList.add('hidden');
-      document.getElementById('cameraCaptionTag').classList.add('hidden');
+      document.getElementById('postCaptureFilterBar').classList.add('hidden');
       document.getElementById('cameraCaptionInput').value = '';
 
       // Revert shutter
@@ -1242,21 +1251,13 @@
       shutterIcon.classList.add('hidden');
     }
 
-    function handleCaptionInput() {
+    function handleFrameCaptionClick(e) {
       const input = document.getElementById('cameraCaptionInput');
-      const tag = document.getElementById('cameraCaptionTag');
-      const text = document.getElementById('cameraCaptionText');
-      if (input.value.trim()) {
-        text.innerText = input.value;
-        tag.classList.remove('hidden');
-        applyCaptionStyleToTag();
-      } else {
-        tag.classList.add('hidden');
-      }
+      if (input) input.focus();
     }
 
-    function focusCaptionInput() {
-      document.getElementById('cameraCaptionInput').focus();
+    function handleCaptionInput() {
+      // User is typing directly on top of the image
     }
 
     function populateRecipientMatrix() {
