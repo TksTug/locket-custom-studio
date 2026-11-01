@@ -1544,9 +1544,25 @@
 
         return `
           <!-- MOMENT CARD (CLEAN & MINIMAL LOCKET FEED) -->
-          <div class="w-full max-w-[340px] flex flex-col space-y-3">
+          <div class="w-full max-w-[340px] flex flex-col space-y-2.5 pb-6 border-b border-white/5">
             
-            <!-- Squircle Media Container -->
+            <!-- 1. Author info ABOVE photo -->
+            <div class="flex items-center justify-between px-1">
+              <div class="flex items-center gap-2.5 cursor-pointer" onclick="openChatByMomentIndex(${idx})">
+                <div class="w-8 h-8 rounded-full ring-1 ring-amber-400/50 overflow-hidden flex items-center justify-center bg-slate-800 shrink-0 shadow-sm">
+                  ${author.profile_picture ? 
+                    `<img src="${author.profile_picture}" class="w-full h-full rounded-full object-cover">` : 
+                    `<div class="w-full h-full rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs text-white">${authorName[0]}</div>`
+                  }
+                </div>
+                <div class="flex flex-col text-left">
+                  <span class="text-xs font-bold text-white leading-tight">${authorName}</span>
+                  <span class="text-[10px] text-slate-400 leading-tight">${timeAgo}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Squircle Media Container -->
             <div class="locket-squircle relative mx-auto shadow-2xl overflow-hidden cursor-pointer" onclick="openChatByMomentIndex(${idx})">
               ${isVideo ? 
                 `<video src="${mediaSrc}" autoplay loop muted playsinline class="w-full h-full object-cover"></video>` : 
@@ -1560,23 +1576,7 @@
               ` : ''}
             </div>
 
-            <!-- Author info under photo -->
-            <div class="flex items-center justify-between px-1">
-              <div class="flex items-center gap-2 cursor-pointer" onclick="openChatByMomentIndex(${idx})">
-                <div class="w-7 h-7 rounded-full ring-1 ring-amber-400/50 overflow-hidden flex items-center justify-center bg-slate-800 shrink-0">
-                  ${author.profile_picture ? 
-                    `<img src="${author.profile_picture}" class="w-full h-full rounded-full object-cover">` : 
-                    `<div class="w-full h-full rounded-full bg-slate-700 flex items-center justify-center font-bold text-[10px] text-white">${authorName[0]}</div>`
-                  }
-                </div>
-                <div class="flex items-center gap-1.5">
-                  <span class="text-xs font-bold text-white">${authorName}</span>
-                  <span class="text-[11px] text-slate-400">• ${timeAgo}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Quick Reply & Reactions Pill -->
+            <!-- 3. Quick Reply & Reactions Pill -->
             <div class="flex items-center gap-2 glass-pill px-4 py-2 rounded-full w-full shadow-md">
               <input type="text" placeholder="Gửi tin nhắn..." class="flex-1 bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none" onkeydown="if(event.key==='Enter') sendInlineMomentReply('${mid}', this, '${author.uid || ''}')">
               <div class="flex items-center gap-2.5 text-base shrink-0">

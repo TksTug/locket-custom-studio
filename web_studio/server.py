@@ -212,20 +212,19 @@ if os.path.exists(FRIENDS_CACHE_FILE):
 
 @app.route("/api/friends", methods=["GET"])
 def list_friends():
-    global FRIENDS_CACHE
-    if not client.is_authenticated():
+    c, sid = get_client_for_request()
+    if not c.is_authenticated():
         return jsonify({"friends": []})
 
-    # Return cached friends if fetched within 5 minutes
     now = time.time()
-    uid = client.session.uid or "anonymous"
+    uid = c.session.uid or "anonymous"
     user_fcache = USER_FRIENDS_CACHE.setdefault(uid, {"timestamp": 0, "friends": []})
     if now - user_fcache["timestamp"] < 300 and user_fcache["friends"]:
         return jsonify({"friends": user_fcache["friends"]})
 
     try:
-        token = client.session.get_valid_token()
-        my_uid = client.session.uid
+        token = c.session.get_valid_token()
+        my_uid = c.session.uid
         import urllib.request
         url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/friends"
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
@@ -238,7 +237,7 @@ def list_friends():
 
         def fetch_single_profile(fuid):
             try:
-                p = client.user.get_profile(fuid)
+                p = c.user.get_profile(fuid)
                 return {
                     "uid": fuid,
                     "first_name": p.get("first_name", ""),
@@ -255,8 +254,8 @@ def list_friends():
                     "profile_picture": None
                 }
 
-        # Fetch in parallel with 10 threads
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        # Fetch in parallel with 8 threads using concrete client instance c
+        with ThreadPoolExecutor(max_workers=8) as executor:
             friends = list(executor.map(fetch_single_profile, uids))
 
         user_fcache["timestamp"] = now
@@ -269,8 +268,6 @@ def list_friends():
 # ==========================================
 # FEED (XEM BẠN BÈ ĐĂNG GÌ - KHOẢNH KHẮC THẬT)
 # ==========================================
-FEED_CACHE = {"timestamp": 0, "feed": []}
-
 def parse_moment_timestamp(val):
     if not val:
         return 0.0
@@ -291,28 +288,53 @@ def parse_moment_timestamp(val):
 
 @app.route("/api/feed", methods=["GET"])
 def get_feed():
-    global FEED_CACHE, FRIENDS_CACHE
-    if not client.is_authenticated():
+    c, sid = get_client_for_request()
+    if not c.is_authenticated():
         return jsonify({"feed": [], "moments": []})
 
     now = time.time()
+    my_uid = c.session.uid or "anonymous"
     user_uid = request.args.get("user_uid") or request.args.get("uid")
     refresh = request.args.get("refresh") == "true"
 
-    # Fast friends lookup from cache or fetch if missing
-    friends = FRIENDS_CACHE.get("friends")
-    if not friends or (now - FRIENDS_CACHE.get("timestamp", 0) > 300):
+    user_feed_cache = USER_FEED_CACHE.setdefault(my_uid, {"timestamp": 0, "feed": []})
+    user_fcache = USER_FRIENDS_CACHE.setdefault(my_uid, {"timestamp": 0, "friends": []})
+
+    # Fast friends lookup from per-user cache, or fetch if empty
+    friends = user_fcache.get("friends", [])
+    if not friends or (now - user_fcache.get("timestamp", 0) > 300):
         try:
-            friends = client.friends.get_all_friends()
-            FRIENDS_CACHE["timestamp"] = now
-            FRIENDS_CACHE["friends"] = friends
-        except Exception:
-            friends = []
+            token = c.session.get_valid_token()
+            url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/friends"
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            uids = [doc["name"].split("/")[-1] for doc in data.get("documents", [])]
+
+            def fetch_single_profile(fuid):
+                try:
+                    p = c.user.get_profile(fuid)
+                    return {
+                        "uid": fuid,
+                        "first_name": p.get("first_name", ""),
+                        "last_name": p.get("last_name", ""),
+                        "username": p.get("username", ""),
+                        "profile_picture": p.get("profile_picture_url")
+                    }
+                except Exception:
+                    return {"uid": fuid, "first_name": "Bạn Locket", "username": fuid[:8]}
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                friends = list(executor.map(fetch_single_profile, uids))
+            user_fcache["timestamp"] = now
+            user_fcache["friends"] = friends
+        except Exception as e:
+            friends = user_fcache.get("friends", [])
 
     friend_map = {f["uid"]: f for f in friends if "uid" in f}
     friend_uids = [f["uid"] for f in friends if "uid" in f]
-    my_uid = client.session.uid
-    my_profile = client.user.get_profile() if client.is_authenticated() else {}
+
+    my_profile = c.user.get_profile() if c.is_authenticated() else {}
     my_info = {
         "uid": my_uid,
         "first_name": my_profile.get("first_name", "Bạn"),
@@ -330,15 +352,15 @@ def get_feed():
             return friend_map[uid]
         return {"uid": uid, "first_name": "Bạn Locket", "username": uid[:8]}
 
-    # 1. SPECIFIC FRIEND FILTER: Instantly fetch this friend's live moment from Locket server
+    # 1. SPECIFIC FRIEND FILTER: Instantly fetch this friend's live moment
     if user_uid:
         try:
             author_info = resolve_author(user_uid)
-            other_friends = [u for u in friend_uids if u != user_uid]
-            feed_res = client.post_api("getLatestMomentV2", {
+            others = [u for u in friend_uids if u != user_uid]
+            feed_res = c.post_api("getLatestMomentV2", {
                 "should_count_missed_moments": False,
                 "include_group_moments": True,
-                "excluded_users": other_friends
+                "excluded_users": others
             })
             friend_feed = []
             for m in feed_res.get("data", []):
@@ -361,19 +383,19 @@ def get_feed():
             return jsonify({"feed": [], "moments": [], "error": str(e)})
 
     # Cache general feed for 45 seconds unless explicit refresh requested
-    if not refresh and (now - FEED_CACHE.get("timestamp", 0) < 45) and FEED_CACHE.get("feed"):
-        return jsonify({"feed": FEED_CACHE["feed"], "moments": FEED_CACHE["feed"]})
+    if not refresh and (now - user_feed_cache.get("timestamp", 0) < 45) and user_feed_cache.get("feed"):
+        return jsonify({"feed": user_feed_cache["feed"], "moments": user_feed_cache["feed"]})
 
     try:
         feed_items = []
         seen_thumbs = set()
         seen_uids = set()
 
-        # 2. HIGH-SPEED CONCURRENT FETCH: Query live moments from all 32 friends in parallel (<1.5s)
+        # 2. HIGH-SPEED CONCURRENT FETCH: Query live moments using concrete client c
         def fetch_friend_latest_moment(fuid):
             others = [u for u in friend_uids if u != fuid]
             try:
-                res = client.post_api("getLatestMomentV2", {
+                res = c.post_api("getLatestMomentV2", {
                     "should_count_missed_moments": False,
                     "include_group_moments": True,
                     "excluded_users": others
@@ -382,7 +404,7 @@ def get_feed():
             except Exception:
                 return []
 
-        with ThreadPoolExecutor(max_workers=16) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             friend_results = list(executor.map(fetch_friend_latest_moment, friend_uids))
 
         for batch in friend_results:
@@ -408,7 +430,7 @@ def get_feed():
 
         # 3. Fetch our own latest moment from Locket server
         try:
-            my_res = client.post_api("getLatestMomentV2", {
+            my_res = c.post_api("getLatestMomentV2", {
                 "should_count_missed_moments": False,
                 "include_group_moments": True,
                 "excluded_users": friend_uids
@@ -430,11 +452,11 @@ def get_feed():
                         "author": my_info
                     })
         except Exception as e:
-            print("Error fetching own latest moment:", e)
+            pass
 
         # 4. Include locally saved posted moments from history
         try:
-            local_history = client.moments._load_history()
+            local_history = c.moments._load_history()
             for p in local_history:
                 thumb = p.get("thumbnail_url")
                 mid = p.get("moment_uid") or p.get("canonical_uid")
@@ -457,7 +479,8 @@ def get_feed():
         # Sort strictly by timestamp descending (newest moments first)
         feed_items.sort(key=lambda x: x.get("timestamp", 0.0), reverse=True)
 
-        FEED_CACHE = {"timestamp": now, "feed": feed_items}
+        user_feed_cache["timestamp"] = now
+        user_feed_cache["feed"] = feed_items
         return jsonify({"feed": feed_items, "moments": feed_items})
     except Exception as e:
         traceback.print_exc()
