@@ -81,36 +81,40 @@
   <!-- ======================================================== -->
   <!-- TOP APP HEADER -->
   <!-- ======================================================== -->
-  <header class="flex items-center justify-between px-5 pt-3 pb-2 z-30">
-    <!-- Left: Friends selector / count -->
-    <button onclick="openFriendsModal()" class="flex items-center gap-2 glass-pill px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 active:scale-95 transition-all">
-      <div id="headerUserAvatar" class="w-5 h-5 rounded-full bg-gradient-to-tr from-pink-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-white">
-        L
-      </div>
-      <span id="headerFriendsText">32 Bạn bè</span>
-      <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
-    </button>
+  <header class="flex items-center justify-between px-5 pt-3 pb-2 z-30 w-full">
+    <!-- Left Action Slot (Friends button on camera, Back button on other tabs) -->
+    <div id="headerLeftAction">
+      <button onclick="openFriendsModal()" class="flex items-center gap-2 glass-pill px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 active:scale-95 transition-all">
+        <div id="headerUserAvatar" class="w-5 h-5 rounded-full bg-gradient-to-tr from-pink-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-white">
+          L
+        </div>
+        <span id="headerFriendsText">32 Bạn bè</span>
+        <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+      </button>
+    </div>
 
-    <!-- Center: App Logo (Click to switch to Camera) -->
-    <div class="flex items-center gap-1.5 cursor-pointer" onclick="switchToCameraMode()">
+    <!-- Center: App Logo (Click to always switch back to Camera) -->
+    <div class="flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all" onclick="switchToCameraMode()" title="Bấm để về màn hình Chụp ảnh">
       <div class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></div>
       <span class="font-extrabold text-base tracking-wide bg-gradient-to-r from-amber-300 via-pink-400 to-amber-200 bg-clip-text text-transparent">LOCKET</span>
     </div>
 
     <!-- Right: Chat Messages Button -->
-    <button onclick="switchMainView('chat')" class="relative glass-pill w-9 h-9 rounded-full flex items-center justify-center text-slate-200 active:scale-95 transition-all">
-      <i data-lucide="message-circle" class="w-4 h-4"></i>
-      <span id="unreadChatBadge" class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-pink-500 rounded-full border-2 border-black hidden"></span>
-    </button>
+    <div id="headerRightAction">
+      <button onclick="switchMainView('chat')" class="relative glass-pill w-9 h-9 rounded-full flex items-center justify-center text-slate-200 active:scale-95 transition-all" title="Tin nhắn">
+        <i data-lucide="message-circle" class="w-4 h-4"></i>
+        <span id="unreadChatBadge" class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-pink-500 rounded-full border-2 border-black hidden"></span>
+      </button>
+    </div>
   </header>
 
   <!-- ======================================================== -->
   <!-- MAIN CONTENT CONTAINER -->
   <!-- ======================================================== -->
-  <main class="flex-1 relative overflow-hidden flex flex-col items-center justify-center px-4">
+  <main class="flex-1 relative overflow-hidden flex flex-col items-center justify-start w-full px-3">
 
     <!-- VIEW 1: CAMERA & POST STUDIO (TRANG CHỦ LOCKET) -->
-    <div id="viewCamera" class="w-full flex flex-col items-center justify-center space-y-4">
+    <div id="viewCamera" class="w-full flex flex-col items-center justify-center space-y-4 my-auto">
       
       <!-- Locket Square Viewport -->
       <div class="locket-frame relative flex items-center justify-center">
@@ -123,8 +127,15 @@
         <!-- 3. Picked Long Video Element (2 - 5 min video) -->
         <video id="cameraPreviewVideo" autoplay loop muted playsinline class="w-full h-full object-cover hidden"></video>
 
+        <!-- Real-time Live Weather Overlay Badge (Hiển thị ngay lập tức khi bật thời tiết) -->
+        <div id="liveWeatherBadge" class="hidden absolute top-4 left-4 z-20 glass-pill px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-bold text-white shadow-xl border border-white/20 bg-black/60 backdrop-blur-md transition-all pointer-events-none">
+          <span id="liveWeatherIcon">⛅</span>
+          <span id="liveWeatherTemp">33°C</span>
+          <span id="liveWeatherCity" class="text-slate-300 text-[10px]">TP.HCM</span>
+        </div>
+
         <!-- Retake / Cancel Button (X) when media is captured or picked -->
-        <button id="btnRetakeMedia" onclick="cancelCapturedMedia()" class="hidden absolute top-4 left-4 z-20 glass-pill w-9 h-9 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-lg">
+        <button id="btnRetakeMedia" onclick="cancelCapturedMedia()" class="hidden absolute top-4 right-4 z-20 glass-pill w-9 h-9 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-lg">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
 
@@ -163,25 +174,36 @@
 
     </div>
 
-    <!-- VIEW 2: FEED / DÒNG THỜI GIAN (XEM BẠN BÈ ĐĂNG GÌ) -->
-    <div id="viewFeed" class="w-full h-full flex flex-col items-center justify-center hidden">
-      <div id="feedContainer" class="w-full flex flex-col items-center justify-center">
+    <!-- VIEW 2: FEED / DÒNG THỜI GIAN (XEM BẠN BÈ ĐĂNG GÌ - LƯỚT CUỘN ĐẦY ĐỦ) -->
+    <div id="viewFeed" class="w-full h-full flex flex-col items-center overflow-y-auto no-scrollbar scroll-smooth pb-28 pt-1 hidden">
+      <!-- Top banner for easy return -->
+      <div class="w-full max-w-[360px] flex items-center justify-between py-2 px-1 mb-2">
+        <button onclick="switchToCameraMode()" class="flex items-center gap-1.5 text-xs font-bold text-amber-300 glass-pill px-3 py-1.5 rounded-full active:scale-95 transition-all">
+          <i data-lucide="camera" class="w-4 h-4"></i>
+          <span>Về chụp ảnh</span>
+        </button>
+        <span id="feedCountBadge" class="text-[11px] font-semibold text-slate-400 glass-pill px-2.5 py-1 rounded-full">Đang tải...</span>
+      </div>
+
+      <div id="feedContainer" class="w-full flex flex-col items-center space-y-6">
         <!-- Rendered dynamically -->
       </div>
     </div>
 
     <!-- VIEW 3: TIN NHẮN & CHAT -->
-    <div id="viewChat" class="w-full h-full flex flex-col hidden pt-2">
+    <div id="viewChat" class="w-full h-full flex flex-col hidden pt-1 pb-24">
       <!-- Conversation List Subview -->
       <div id="chatListView" class="w-full h-full flex flex-col">
-        <div class="flex items-center justify-between pb-3 border-b border-white/10 mb-2">
-          <h2 class="text-base font-bold text-white flex items-center gap-2">
-            <i data-lucide="messages-square" class="w-4 h-4 text-pink-400"></i> Tin nhắn Locket
-          </h2>
+        <!-- Back to camera quick bar -->
+        <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+          <button onclick="switchToCameraMode()" class="flex items-center gap-1.5 text-xs font-bold text-amber-300 glass-pill px-3 py-1.5 rounded-full active:scale-95 transition-all">
+            <i data-lucide="camera" class="w-4 h-4"></i>
+            <span>Về chụp ảnh</span>
+          </button>
           <span id="chatCountText" class="text-xs text-slate-400 font-mono">27 cuộc trò chuyện</span>
         </div>
 
-        <div id="chatConversationsContainer" class="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-1">
+        <div id="chatConversationsContainer" class="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-1 pb-6">
           <!-- Loaded dynamically -->
           <div class="text-xs text-slate-500 py-8 text-center">Đang tải tin nhắn...</div>
         </div>
@@ -191,7 +213,7 @@
       <div id="chatDirectView" class="w-full h-full flex flex-col hidden">
         <div class="flex items-center justify-between pb-3 border-b border-white/10 mb-2">
           <div class="flex items-center gap-3">
-            <button onclick="closeDirectChat()" class="p-1 rounded-lg hover:bg-white/10 text-slate-300">
+            <button onclick="closeDirectChat()" class="p-1 rounded-lg hover:bg-white/10 text-slate-300 active:scale-95 transition-all" title="Quay lại danh sách chat">
               <i data-lucide="arrow-left" class="w-5 h-5"></i>
             </button>
             <div id="chatActivePeerAvatar" class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white">U</div>
@@ -200,6 +222,9 @@
               <div id="chatActivePeerUsername" class="text-[10px] text-slate-400">@username</div>
             </div>
           </div>
+          <button onclick="switchToCameraMode()" class="p-1.5 rounded-full glass-pill text-amber-300 active:scale-95 transition-all" title="Chụp ảnh gửi bạn">
+            <i data-lucide="camera" class="w-4 h-4"></i>
+          </button>
         </div>
 
         <!-- Chat messages history -->
@@ -222,8 +247,8 @@
   <!-- ======================================================== -->
   <!-- BOTTOM CONTROLS & CAMERA SHUTTER BUTTON -->
   <!-- ======================================================== -->
-  <footer class="w-full pb-6 pt-3 px-6 z-30">
-    <!-- Camera mode controls -->
+  <footer class="w-full pb-6 pt-2 px-6 z-30">
+    <!-- Camera mode controls (Hiển thị khi ở chế độ Camera) -->
     <div id="cameraControlsFooter" class="flex items-center justify-between max-w-[340px] mx-auto">
       
       <!-- Gallery Picker Button (Opens Phone Camera Roll / Gallery) -->
@@ -248,16 +273,19 @@
 
     </div>
 
-    <!-- Feed / Chat Bottom Navigation Bar -->
-    <div id="navFooter" class="hidden flex items-center justify-around max-w-[280px] mx-auto glass-pill py-2.5 px-4 rounded-full">
-      <button onclick="switchToCameraMode()" class="text-slate-400 hover:text-white flex flex-col items-center">
+    <!-- Feed / Chat Bottom Navigation Bar (Dock cố định đáy nổi bật - không bao giờ bị trôi mất) -->
+    <div id="navFooter" class="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 hidden flex items-center justify-around gap-8 glass-pill py-2.5 px-6 rounded-full shadow-2xl border border-white/15 bg-[#14141cf5] backdrop-blur-xl">
+      <button onclick="switchToCameraMode()" id="navBtnCamera" class="flex flex-col items-center text-amber-400 active:scale-90 transition-all">
         <i data-lucide="camera" class="w-5 h-5"></i>
+        <span class="text-[10px] font-bold mt-0.5">Chụp ảnh</span>
       </button>
-      <button onclick="switchMainView('feed')" class="text-pink-400 flex flex-col items-center">
+      <button onclick="switchMainView('feed')" id="navBtnFeed" class="flex flex-col items-center text-slate-400 hover:text-white active:scale-90 transition-all">
         <i data-lucide="sparkles" class="w-5 h-5"></i>
+        <span class="text-[10px] font-bold mt-0.5">Khám phá</span>
       </button>
-      <button onclick="switchMainView('chat')" class="text-slate-400 hover:text-white flex flex-col items-center">
+      <button onclick="switchMainView('chat')" id="navBtnChat" class="flex flex-col items-center text-slate-400 hover:text-white active:scale-90 transition-all">
         <i data-lucide="message-circle" class="w-5 h-5"></i>
+        <span class="text-[10px] font-bold mt-0.5">Tin nhắn</span>
       </button>
     </div>
   </footer>
@@ -440,8 +468,45 @@
       document.getElementById('viewFeed').classList.toggle('hidden', view !== 'feed');
       document.getElementById('viewChat').classList.toggle('hidden', view !== 'chat');
 
-      document.getElementById('cameraControlsFooter').classList.toggle('hidden', view !== 'camera');
-      document.getElementById('navFooter').classList.toggle('hidden', view === 'camera');
+      // Update Bottom Bar visibility
+      const cameraFooter = document.getElementById('cameraControlsFooter');
+      const navFooter = document.getElementById('navFooter');
+      if (view === 'camera') {
+        cameraFooter.classList.remove('hidden');
+        navFooter.classList.add('hidden');
+      } else {
+        cameraFooter.classList.add('hidden');
+        navFooter.classList.remove('hidden');
+      }
+
+      // Update Tab Bar Active State
+      const btnFeed = document.getElementById('navBtnFeed');
+      const btnChat = document.getElementById('navBtnChat');
+      const btnCam = document.getElementById('navBtnCamera');
+      if (btnCam) btnCam.className = view === 'camera' ? 'flex flex-col items-center text-amber-400 active:scale-90 transition-all font-bold' : 'flex flex-col items-center text-slate-400 hover:text-white active:scale-90 transition-all';
+      if (btnFeed) btnFeed.className = view === 'feed' ? 'flex flex-col items-center text-pink-400 active:scale-90 transition-all font-bold' : 'flex flex-col items-center text-slate-400 hover:text-white active:scale-90 transition-all';
+      if (btnChat) btnChat.className = view === 'chat' ? 'flex flex-col items-center text-cyan-400 active:scale-90 transition-all font-bold' : 'flex flex-col items-center text-slate-400 hover:text-white active:scale-90 transition-all';
+
+      // Update Top Header Left Slot (Back to Camera or Friends List)
+      const headerLeft = document.getElementById('headerLeftAction');
+      if (view === 'camera') {
+        headerLeft.innerHTML = `
+          <button onclick="openFriendsModal()" class="flex items-center gap-2 glass-pill px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 active:scale-95 transition-all">
+            <div id="headerUserAvatar" class="w-5 h-5 rounded-full bg-gradient-to-tr from-pink-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-white">
+              L
+            </div>
+            <span id="headerFriendsText">${friendsList.length || 32} Bạn bè</span>
+            <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+          </button>
+        `;
+      } else {
+        headerLeft.innerHTML = `
+          <button onclick="switchToCameraMode()" class="flex items-center gap-1.5 glass-pill px-3 py-1.5 rounded-full text-xs font-bold text-amber-300 hover:text-amber-200 active:scale-95 transition-all shadow-md">
+            <i data-lucide="camera" class="w-4 h-4"></i>
+            <span>Chụp ảnh</span>
+          </button>
+        `;
+      }
 
       if (view === 'camera') {
         if (!selectedFile) startLiveCamera();
@@ -508,13 +573,50 @@
       }
     }
 
-    function toggleWeatherRadar() {
+    let liveWeatherData = null;
+
+    async function fetchLiveWeatherData() {
+      if (liveWeatherData) return liveWeatherData;
+      try {
+        const res = await fetch('/api/weather?city=TP. Hồ Chí Minh');
+        const data = await res.json();
+        if (data && data.temp) {
+          liveWeatherData = data;
+          return liveWeatherData;
+        }
+      } catch (e) {
+        console.error('Weather error:', e);
+      }
+      return { temp: '33°C', city: 'TP. Hồ Chí Minh', condition: '⛅ Nắng nhẹ' };
+    }
+
+    async function toggleWeatherRadar() {
       weatherEnabled = !weatherEnabled;
       const btn = document.getElementById('btnWeatherToggle');
-      btn.className = weatherEnabled 
-        ? 'glass-pill w-8 h-8 rounded-full flex items-center justify-center text-cyan-400 bg-cyan-500/20 border-cyan-400/50 active:scale-95 transition-all shadow-lg'
-        : 'glass-pill w-8 h-8 rounded-full flex items-center justify-center text-slate-400 active:scale-95 transition-all shadow-lg';
-      if (!isVideoFile && selectedFile) renderImagePreview();
+      const badge = document.getElementById('liveWeatherBadge');
+
+      if (weatherEnabled) {
+        btn.className = 'glass-pill w-8 h-8 rounded-full flex items-center justify-center text-cyan-400 bg-cyan-500/20 border-cyan-400/50 active:scale-95 transition-all shadow-lg ring-2 ring-cyan-400/30';
+        badge.classList.remove('hidden');
+        document.getElementById('liveWeatherTemp').innerText = '...';
+
+        const wData = await fetchLiveWeatherData();
+        document.getElementById('liveWeatherTemp').innerText = wData.temp || '33°C';
+        document.getElementById('liveWeatherCity').innerText = wData.city ? 'TP.HCM' : '';
+        const cond = (wData.condition || '').toLowerCase();
+        let icon = '⛅';
+        if (cond.includes('mưa') || cond.includes('rain')) icon = '🌧️';
+        else if (cond.includes('nắng') || cond.includes('quang')) icon = '☀️';
+        else if (cond.includes('mây') || cond.includes('cloud')) icon = '☁️';
+        else if (cond.includes('sét') || cond.includes('thunder')) icon = '⚡';
+        document.getElementById('liveWeatherIcon').innerText = icon;
+
+        if (!isVideoFile && selectedFile) renderImagePreview();
+      } else {
+        btn.className = 'glass-pill w-8 h-8 rounded-full flex items-center justify-center text-slate-400 active:scale-95 transition-all shadow-lg';
+        badge.classList.add('hidden');
+        if (!isVideoFile && selectedFile) renderImagePreview();
+      }
     }
 
     function cycleFrameType() {
@@ -598,12 +700,36 @@
       }
     }
 
+    // Time Ago Helper
+    function formatTimeAgo(ts) {
+      if (!ts) return 'Gần đây';
+      let dateObj;
+      if (typeof ts === 'number') {
+        dateObj = new Date(ts * 1000);
+      } else if (typeof ts === 'string') {
+        dateObj = new Date(ts);
+      } else if (typeof ts === 'object' && ts._seconds) {
+        dateObj = new Date(ts._seconds * 1000);
+      } else {
+        return 'Gần đây';
+      }
+      const diffSec = Math.floor((Date.now() - dateObj.getTime()) / 1000);
+      if (isNaN(diffSec) || diffSec < 0) return 'Gần đây';
+      if (diffSec < 60) return 'Vừa xong';
+      if (diffSec < 3600) return `${Math.floor(diffSec / 60)} phút trước`;
+      if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} giờ trước`;
+      if (diffSec < 172800) return 'Hôm qua';
+      return dateObj.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+    }
+
     // ==========================================
-    // FEED (XEM BẠN BÈ ĐĂNG GÌ)
+    // FEED (XEM BẠN BÈ ĐĂNG GÌ - LƯỚT MƯỢT MÀ)
     // ==========================================
     async function loadFeed() {
       const container = document.getElementById('feedContainer');
-      container.innerHTML = '<div class="text-xs text-slate-400 py-10">Đang tải khoảnh khắc bạn bè...</div>';
+      const badge = document.getElementById('feedCountBadge');
+      container.innerHTML = '<div class="text-xs text-slate-400 py-12 text-center flex flex-col items-center gap-2"><i data-lucide="loader" class="w-6 h-6 animate-spin text-pink-400"></i> Đang tải khoảnh khắc bạn bè...</div>';
+      lucide.createIcons();
 
       try {
         const res = await fetch('/api/feed');
@@ -611,9 +737,11 @@
         const data = await res.json();
         currentFeed = data.feed || [];
 
+        if (badge) badge.innerText = `${currentFeed.length} khoảnh khắc`;
+
         if (currentFeed.length === 0) {
           container.innerHTML = `
-            <div class="text-center py-12 px-6">
+            <div class="text-center py-16 px-6">
               <i data-lucide="sparkles" class="w-10 h-10 text-pink-400 mx-auto mb-3"></i>
               <h4 class="text-sm font-bold text-white">Chưa có khoảnh khắc mới</h4>
               <p class="text-xs text-slate-400 mt-1">Khi bạn bè của bạn đăng khoảnh khắc, chúng sẽ xuất hiện tại đây.</p>
@@ -623,43 +751,68 @@
           return;
         }
 
-        container.innerHTML = currentFeed.map(item => `
-          <div class="w-full max-w-[360px] space-y-3 mb-6">
-            <!-- Author Header -->
+        container.innerHTML = currentFeed.map((item, idx) => `
+          <div id="moment-${idx}" class="w-full max-w-[360px] space-y-3 pb-6 border-b border-white/[0.06] last:border-0">
+            <!-- Author Header & Time -->
             <div class="flex items-center justify-between px-2">
               <div class="flex items-center gap-2.5">
                 ${item.author.profile_picture ? 
-                  `<img src="${item.author.profile_picture}" class="w-8 h-8 rounded-full object-cover">` :
+                  `<img src="${item.author.profile_picture}" class="w-8 h-8 rounded-full object-cover ring-1 ring-white/20">` :
                   `<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-pink-500 to-amber-500 flex items-center justify-center text-xs font-bold text-white">${(item.author.first_name || 'U')[0].toUpperCase()}</div>`
                 }
                 <div>
-                  <div class="text-xs font-bold text-white">${item.author.first_name} ${item.author.last_name || ''}</div>
+                  <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>${item.author.first_name} ${item.author.last_name || ''}</span>
+                    <span class="text-[10px] text-slate-400 font-normal">• ${formatTimeAgo(item.date || item.timestamp)}</span>
+                  </div>
                   <div class="text-[10px] text-slate-400">@${item.author.username || 'locket'}</div>
                 </div>
               </div>
+
+              <!-- Moment Counter -->
+              <span class="text-[10px] font-mono text-slate-500 glass-pill px-2 py-0.5 rounded-full">
+                #${idx + 1}
+              </span>
             </div>
 
             <!-- Moment Frame -->
-            <div class="locket-frame relative">
+            <div class="locket-frame relative shadow-2xl mx-auto">
               ${item.video_url ? 
                 `<video src="${item.video_url}" autoplay loop muted playsinline class="w-full h-full object-cover"></video>` :
-                `<img src="${item.thumbnail_url}" class="w-full h-full object-cover">`
+                `<img src="${item.thumbnail_url}" class="w-full h-full object-cover" loading="lazy" onerror="this.onerror=null; this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>'">`
               }
 
               ${item.caption ? `
-                <div class="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 flex items-center justify-center text-center">
+                <div class="absolute bottom-4 left-4 right-4 bg-black/65 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 flex items-center justify-center text-center shadow-lg">
                   <span class="text-xs font-semibold text-white">${item.caption}</span>
                 </div>
               ` : ''}
             </div>
 
-            <!-- Instant Reactions Bar -->
+            <!-- Instant Reactions Bar & Reply -->
             <div class="flex items-center justify-between px-2 pt-1">
-              <div class="flex items-center gap-2">
-                <button onclick="sendReaction('${item.moment_uid}', '❤️')" class="glass-pill px-3 py-1.5 rounded-full text-sm active:scale-90 transition-all">❤️</button>
-                <button onclick="sendReaction('${item.moment_uid}', '🔥')" class="glass-pill px-3 py-1.5 rounded-full text-sm active:scale-90 transition-all">🔥</button>
-                <button onclick="sendReaction('${item.moment_uid}', '😂')" class="glass-pill px-3 py-1.5 rounded-full text-sm active:scale-90 transition-all">😂</button>
-                <button onclick="sendReaction('${item.moment_uid}', '🥺')" class="glass-pill px-3 py-1.5 rounded-full text-sm active:scale-90 transition-all">🥺</button>
+              <div class="flex items-center gap-1.5">
+                <button onclick="sendReaction('${item.moment_uid}', '❤️')" class="glass-pill px-2.5 py-1.5 rounded-full text-sm active:scale-75 hover:scale-110 transition-all" title="Thả tim">❤️</button>
+                <button onclick="sendReaction('${item.moment_uid}', '🔥')" class="glass-pill px-2.5 py-1.5 rounded-full text-sm active:scale-75 hover:scale-110 transition-all" title="Thả lửa">🔥</button>
+                <button onclick="sendReaction('${item.moment_uid}', '😂')" class="glass-pill px-2.5 py-1.5 rounded-full text-sm active:scale-75 hover:scale-110 transition-all" title="Cười lớn">😂</button>
+                <button onclick="sendReaction('${item.moment_uid}', '🥺')" class="glass-pill px-2.5 py-1.5 rounded-full text-sm active:scale-75 hover:scale-110 transition-all" title="Xúc động">🥺</button>
+                <button onclick="sendReaction('${item.moment_uid}', '👏')" class="glass-pill px-2.5 py-1.5 rounded-full text-sm active:scale-75 hover:scale-110 transition-all" title="Vỗ tay">👏</button>
+              </div>
+
+              <!-- Reply message button -->
+              <button onclick="openDirectChatFromMoment('${item.author.uid}', '${item.author.first_name}', '${item.author.username}', '${item.author.profile_picture || ''}')" class="glass-pill px-3 py-1.5 rounded-full text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 active:scale-95 transition-all shadow-md">
+                <i data-lucide="message-circle" class="w-3.5 h-3.5 text-pink-400"></i>
+                <span>Nhắn tin</span>
+              </button>
+            </div>
+          </div>
+        `).join('');
+
+        lucide.createIcons();
+      } catch (e) {
+        container.innerHTML = '<div class="text-xs text-rose-400 py-8 text-center">Lỗi tải khoảnh khắc: ' + e + '</div>';
+      }
+    }
                 <button onclick="sendReaction('${item.moment_uid}', '👏')" class="glass-pill px-3 py-1.5 rounded-full text-sm active:scale-90 transition-all">👏</button>
               </div>
 
