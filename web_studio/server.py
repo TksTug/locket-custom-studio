@@ -34,6 +34,9 @@ from weather_service import fetch_live_weather
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
 
+import secrets
+from werkzeug.local import LocalProxy
+
 SESSION_FILE = os.path.join(PROJECT_ROOT, "locketlam_session.json")
 
 # Support initializing session from cloud environment variable (Render / Railway / Fly)
@@ -46,7 +49,38 @@ if SESSION_ENV and not os.path.exists(SESSION_FILE):
     except Exception as e:
         print(">> Could not write session from environment variable:", e)
 
-client = LocketClient(session_path=SESSION_FILE)
+# MULTI-USER SESSION ENGINE: Every user/browser has their own isolated LocketClient session
+SESSIONS_DIR = os.path.join(PROJECT_ROOT, "sessions")
+os.makedirs(SESSIONS_DIR, exist_ok=True)
+CLIENTS = {}
+USER_FRIENDS_CACHE = {}
+USER_FEED_CACHE = {}
+
+def get_client_for_request():
+    sid = request.cookies.get("locket_session_id")
+    if not sid:
+        sid = request.headers.get("X-Session-ID")
+    if not sid:
+        sid = secrets.token_hex(16)
+
+    if sid in CLIENTS:
+        return CLIENTS[sid], sid
+
+    session_file = os.path.join(SESSIONS_DIR, f"{sid}.json")
+    # On local machine (localhost / 192.168), fallback to host locketlam_session.json if exists
+    is_local = request.host.startswith(("localhost", "127.0.0.1", "192.168."))
+    if is_local and not os.path.exists(session_file) and os.path.exists(SESSION_FILE):
+        session_file = SESSION_FILE
+
+    c = LocketClient(session_path=session_file)
+    CLIENTS[sid] = c
+    return c, sid
+
+def _get_current_client():
+    c, _ = get_client_for_request()
+    return c
+
+client = LocalProxy(_get_current_client)
 
 @app.route("/")
 def index():
@@ -54,14 +88,15 @@ def index():
 
 @app.route("/api/auth/status", methods=["GET"])
 def auth_status():
-    is_auth = client.is_authenticated()
+    c, sid = get_client_for_request()
+    is_auth = c.is_authenticated()
     user_info = None
     if is_auth:
         try:
-            profile = client.user.get_profile()
+            profile = c.user.get_profile()
             user_info = {
-                "uid": client.session.uid,
-                "email": client.session.email,
+                "uid": c.session.uid,
+                "email": c.session.email,
                 "first_name": profile.get("first_name", ""),
                 "last_name": profile.get("last_name", ""),
                 "username": profile.get("username", ""),
@@ -69,16 +104,18 @@ def auth_status():
             }
         except Exception as e:
             user_info = {
-                "uid": client.session.uid,
-                "email": client.session.email,
+                "uid": c.session.uid,
+                "email": c.session.email,
                 "first_name": "Locket User",
                 "last_name": ""
             }
 
-    return jsonify({
+    resp = jsonify({
         "authenticated": is_auth,
         "user": user_info
     })
+    resp.set_cookie("locket_session_id", sid, max_age=365*86400, httponly=True, samesite="Lax")
+    return resp
 
 @app.route("/api/auth/login", methods=["POST"])
 def auth_login():
@@ -89,19 +126,24 @@ def auth_login():
     if not email or not password:
         return jsonify({"success": False, "error": "Vui lòng nhập đầy đủ Email và Mật khẩu!"}), 400
 
+    c, sid = get_client_for_request()
     try:
-        client.login(email, password)
-        profile = client.user.get_profile()
-        return jsonify({
+        c.login(email, password)
+        profile = c.user.get_profile()
+        user_info = {
+            "uid": c.session.uid,
+            "email": c.session.email,
+            "first_name": profile.get("first_name", ""),
+            "last_name": profile.get("last_name", ""),
+            "username": profile.get("username", ""),
+            "profile_picture": profile.get("profile_picture_url")
+        }
+        resp = jsonify({
             "success": True,
-            "user": {
-                "uid": client.session.uid,
-                "email": client.session.email,
-                "first_name": profile.get("first_name", ""),
-                "last_name": profile.get("last_name", ""),
-                "username": profile.get("username", "")
-            }
+            "user": user_info
         })
+        resp.set_cookie("locket_session_id", sid, max_age=365*86400, httponly=True, samesite="Lax")
+        return resp
     except Exception as e:
         err_msg = str(e)
         if "INVALID_PASSWORD" in err_msg:
@@ -141,12 +183,19 @@ def reset_password():
 
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():
+    c, sid = get_client_for_request()
     try:
-        if os.path.exists(SESSION_FILE):
-            os.remove(SESSION_FILE)
-        client.session.uid = None
-        client.session.id_token = None
-        return jsonify({"success": True})
+        session_file = os.path.join(SESSIONS_DIR, f"{sid}.json")
+        if os.path.exists(session_file):
+            os.remove(session_file)
+        c.session.uid = None
+        c.session.id_token = None
+        c.session.refresh_token = None
+        CLIENTS.pop(sid, None)
+        new_sid = secrets.token_hex(16)
+        resp = jsonify({"success": True})
+        resp.set_cookie("locket_session_id", new_sid, max_age=365*86400, httponly=True, samesite="Lax")
+        return resp
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -169,8 +218,10 @@ def list_friends():
 
     # Return cached friends if fetched within 5 minutes
     now = time.time()
-    if now - FRIENDS_CACHE["timestamp"] < 300 and FRIENDS_CACHE["friends"]:
-        return jsonify({"friends": FRIENDS_CACHE["friends"]})
+    uid = client.session.uid or "anonymous"
+    user_fcache = USER_FRIENDS_CACHE.setdefault(uid, {"timestamp": 0, "friends": []})
+    if now - user_fcache["timestamp"] < 300 and user_fcache["friends"]:
+        return jsonify({"friends": user_fcache["friends"]})
 
     try:
         token = client.session.get_valid_token()
@@ -208,12 +259,8 @@ def list_friends():
         with ThreadPoolExecutor(max_workers=10) as executor:
             friends = list(executor.map(fetch_single_profile, uids))
 
-        FRIENDS_CACHE = {"timestamp": now, "friends": friends}
-        try:
-            with open(FRIENDS_CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump(FRIENDS_CACHE, f, ensure_ascii=False)
-        except Exception:
-            pass
+        user_fcache["timestamp"] = now
+        user_fcache["friends"] = friends
         return jsonify({"friends": friends})
     except Exception as e:
         traceback.print_exc()

@@ -216,6 +216,94 @@
   <div id="flashOverlay" class="fixed inset-0 bg-white pointer-events-none z-50 opacity-0"></div>
 
   <!-- ======================================================== -->
+  <!-- LOGIN SCREEN (GIAO DIỆN ĐĂNG NHẬP LOCKET CHO TỪNG BẠN BÈ) -->
+  <!-- ======================================================== -->
+  <div id="viewLogin" class="fixed inset-0 z-50 bg-[#0d0c11] flex flex-col items-center justify-center p-6 text-center select-none hidden">
+    <!-- Ambient Neon Glow -->
+    <div class="absolute w-72 h-72 rounded-full bg-amber-500/15 blur-3xl pointer-events-none"></div>
+
+    <div class="relative w-full max-w-sm glass-dock rounded-[36px] p-7 space-y-6 border border-white/15 shadow-2xl backdrop-blur-2xl">
+      <!-- App Icon & Badge -->
+      <div class="flex flex-col items-center space-y-2">
+        <div class="w-16 h-16 rounded-3xl bg-gradient-to-tr from-amber-400 to-yellow-600 p-0.5 shadow-xl shadow-amber-400/20 ring-4 ring-amber-400/20">
+          <img src="/icon-192.png" class="w-full h-full rounded-[22px] object-cover" alt="Locket Gold">
+        </div>
+        <div class="flex items-center gap-1.5 pt-1">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <h2 class="text-lg font-extrabold tracking-wide text-white uppercase">LOCKET <span class="text-amber-400">GOLD</span></h2>
+        </div>
+        <p class="text-xs text-slate-400">Đăng nhập tài khoản Locket của bạn</p>
+      </div>
+
+      <!-- Login Form -->
+      <form id="loginForm" onsubmit="handleLoginSubmit(event)" class="space-y-4 text-left">
+        <!-- Email Input -->
+        <div class="space-y-1.5">
+          <label class="text-[11px] font-bold text-slate-300">Email Locket của bạn</label>
+          <div class="glass-pill px-3.5 py-2.5 rounded-2xl flex items-center gap-2.5 focus-within:ring-2 focus-within:ring-amber-400/60 transition-all">
+            <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+            </svg>
+            <input type="email" id="loginEmailInput" required placeholder="vidu@gmail.com" class="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Password Input -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="text-[11px] font-bold text-slate-300">Mật khẩu</label>
+            <button type="button" onclick="openForgotPasswordModal()" class="text-[11px] text-amber-400 hover:underline cursor-pointer">Quên mật khẩu?</button>
+          </div>
+          <div class="glass-pill px-3.5 py-2.5 rounded-2xl flex items-center gap-2.5 focus-within:ring-2 focus-within:ring-amber-400/60 transition-all">
+            <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <input type="password" id="loginPasswordInput" required placeholder="Nhập mật khẩu..." class="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none">
+            <button type="button" onclick="togglePasswordVisibility()" class="text-slate-400 hover:text-white p-0.5 cursor-pointer">
+              <svg id="eyeIcon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Error Message Alert -->
+        <div id="loginErrorMessage" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-xl"></div>
+
+        <!-- Submit Button -->
+        <button type="submit" id="btnLoginSubmit" class="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-yellow-500 text-black font-extrabold text-xs tracking-wider uppercase shadow-lg shadow-amber-400/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer">
+          <span>ĐĂNG NHẬP LOCKET</span>
+        </button>
+      </form>
+
+      <!-- Note for users without password -->
+      <div class="pt-2 border-t border-white/10 text-[11px] text-slate-400 leading-relaxed text-center">
+        <span>Đăng ký Locket bằng SĐT? Bấm </span>
+        <button type="button" onclick="openForgotPasswordModal()" class="text-amber-300 font-bold hover:underline cursor-pointer">Quên mật khẩu</button>
+        <span> để nhận liên kết tạo mật khẩu qua email!</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FORGOT PASSWORD MODAL -->
+  <div id="forgotPasswordModal" class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 hidden">
+    <div class="w-full max-w-sm glass-dock rounded-3xl p-5 space-y-4 border border-white/15 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <span>🔑 Đặt lại / Tạo mật khẩu</span>
+        </h3>
+        <button onclick="closeForgotPasswordModal()" class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white active:scale-90 cursor-pointer">✕</button>
+      </div>
+      <p class="text-xs text-slate-400 leading-relaxed">
+        Nhập Email bạn đã dùng khi đăng ký Locket. Hệ thống Firebase sẽ gửi liên kết chính thức để bạn tạo mật khẩu mới.
+      </p>
+      <div class="space-y-2.5">
+        <input type="email" id="resetEmailInput" placeholder="nhapemail@gmail.com" class="w-full glass-pill px-3.5 py-2.5 rounded-2xl text-xs text-white placeholder-slate-500 focus:outline-none">
+        <button onclick="handleSendPasswordReset()" id="btnSendReset" class="w-full py-2.5 rounded-xl bg-amber-400 text-black font-bold text-xs active:scale-95 transition-all cursor-pointer">Gửi liên kết đến Email</button>
+        <div id="resetStatusMessage" class="hidden text-xs p-2.5 rounded-xl"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
   <!-- TOP BAR (LOCKET CLEAN & MINIMAL) -->
   <!-- ======================================================== -->
   <header id="appTopBar" class="flex items-center justify-between px-4 pt-3 pb-2 z-30 w-full shrink-0">
@@ -689,6 +777,12 @@
         </div>
       </div>
 
+      <!-- Logout Session Button -->
+      <button onclick="logoutSession()" class="w-full p-2.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 flex items-center justify-center gap-2 text-xs font-bold active:scale-95 transition-all hover:bg-rose-500/25 cursor-pointer">
+        <svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <span>Đăng xuất tài khoản</span>
+      </button>
+
       <!-- App Themes -->
       <div class="space-y-2">
         <label class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
@@ -802,12 +896,21 @@
       { id: 'crush', name: 'Người yêu', emoji: '💖', memberUids: [] }
     ];
 
+    // Current Authenticated User Info
+    let currentUserProfile = null;
+
     // Initialization
     window.addEventListener('DOMContentLoaded', async () => {
       lucide.createIcons();
       // Load saved theme
       const savedTheme = localStorage.getItem('locket_theme') || 'theme-gold';
       setAppTheme(savedTheme);
+
+      // Check authentication
+      const isAuthed = await checkAuthStatus();
+      if (!isAuthed) {
+        return; // Pause loading friends/feed until user logs in
+      }
 
       await initializeCamera();
       await loadFriends();
@@ -1867,8 +1970,110 @@
       document.getElementById('settingsModal').classList.add('hidden');
     }
 
-    function logoutSession() {
-      if (confirm("Bạn có chắc chắn muốn đăng xuất khỏi Locket?")) {
+    async function checkAuthStatus() {
+      try {
+        const res = await fetch('/api/auth/status');
+        if (!res.ok) return false;
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          currentUserProfile = data.user;
+          const img = document.getElementById('topBarUserAvatarImg');
+          if (img && data.user.profile_picture) img.src = data.user.profile_picture;
+          const sName = document.getElementById('settingsUserName');
+          if (sName) sName.innerText = `${data.user.first_name || ''} ${data.user.last_name || ''} (@${data.user.username || 'locket'})`.trim();
+          const sUid = document.getElementById('settingsUserUid');
+          if (sUid) sUid.innerText = `UID: ${data.user.uid || ''}`;
+          document.getElementById('viewLogin').classList.add('hidden');
+          return true;
+        } else {
+          document.getElementById('viewLogin').classList.remove('hidden');
+          return false;
+        }
+      } catch (err) {
+        document.getElementById('viewLogin').classList.remove('hidden');
+        return false;
+      }
+    }
+
+    async function handleLoginSubmit(e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmailInput').value.trim();
+      const password = document.getElementById('loginPasswordInput').value.trim();
+      const btn = document.getElementById('btnLoginSubmit');
+      const errEl = document.getElementById('loginErrorMessage');
+
+      btn.disabled = true;
+      btn.innerHTML = '<div class="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div><span>Đang xác thực...</span>';
+      errEl.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Đăng nhập không thành công');
+        }
+        document.getElementById('viewLogin').classList.add('hidden');
+        window.location.reload();
+      } catch (err) {
+        errEl.innerText = err.message;
+        errEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>ĐĂNG NHẬP LOCKET</span>';
+      }
+    }
+
+    function togglePasswordVisibility() {
+      const input = document.getElementById('loginPasswordInput');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function openForgotPasswordModal() {
+      document.getElementById('forgotPasswordModal').classList.remove('hidden');
+    }
+
+    function closeForgotPasswordModal() {
+      document.getElementById('forgotPasswordModal').classList.add('hidden');
+    }
+
+    async function handleSendPasswordReset() {
+      const email = document.getElementById('resetEmailInput').value.trim();
+      const btn = document.getElementById('btnSendReset');
+      const msg = document.getElementById('resetStatusMessage');
+      if (!email) {
+        alert("Vui lòng nhập Email của bạn!");
+        return;
+      }
+      btn.disabled = true;
+      btn.innerText = "Đang gửi...";
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Gửi thất bại');
+        msg.className = "text-xs p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 block";
+        msg.innerText = data.message || "Đã gửi liên kết! Mở hộp thư email để tạo mật khẩu nhé.";
+      } catch (err) {
+        msg.className = "text-xs p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 block";
+        msg.innerText = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "Gửi lại liên kết";
+      }
+    }
+
+    async function logoutSession() {
+      if (confirm("Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Locket này?")) {
+        try {
+          await fetch('/api/auth/logout', { method: 'POST' });
+        } catch (e) {}
         window.location.reload();
       }
     }
