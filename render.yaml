@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: locket-custom-studio
+    env: docker
+    plan: free
+    region: singapore
+    envVars:
+      - key: PORT
+        value: 5050

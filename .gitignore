@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+locketlam_session.json
+*.log
+web_studio/test_sample.png
+.venv/
+env/
