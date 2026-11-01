@@ -424,11 +424,12 @@ def get_chat_messages():
         return jsonify({"messages": []})
 
     peer_uid = request.args.get("uid")
-    if not peer_uid:
+    conv_id = request.args.get("conversation_id")
+    if not peer_uid and not conv_id:
         return jsonify({"messages": []})
 
     try:
-        msgs = client.chat.get_messages(peer_uid)
+        msgs = client.chat.get_messages(other_user_id=peer_uid, conversation_id=conv_id)
         return jsonify({"messages": msgs, "my_uid": client.session.uid})
     except Exception as e:
         return jsonify({"messages": [], "error": str(e)})
