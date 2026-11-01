@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Locket - Widget & Chat</title>
+  <title>Locket</title>
 
   <!-- PWA & Mobile Web App Meta -->
   <link rel="manifest" href="/manifest.json">
@@ -23,6 +23,7 @@
     * {
       -webkit-tap-highlight-color: transparent;
       user-select: none;
+      box-sizing: border-box;
     }
 
     body {
@@ -43,7 +44,7 @@
       overflow: hidden;
       position: relative;
       background: #111116;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
     }
 
     .glass-pill {
@@ -53,7 +54,6 @@
       border: 1px solid rgba(255, 255, 255, 0.12);
     }
 
-    /* Hide scrollbars */
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -61,15 +61,28 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+
+    /* Shutter flash animation */
+    @keyframes shutterFlash {
+      0% { opacity: 0; }
+      50% { opacity: 0.95; }
+      100% { opacity: 0; }
+    }
+    .flash-effect {
+      animation: shutterFlash 0.25s ease-out;
+    }
   </style>
 </head>
 <body class="flex flex-col justify-between max-w-md mx-auto h-full relative">
+
+  <!-- Fullscreen Camera Flash Overlay -->
+  <div id="flashOverlay" class="fixed inset-0 bg-white pointer-events-none z-50 opacity-0"></div>
 
   <!-- ======================================================== -->
   <!-- TOP APP HEADER -->
   <!-- ======================================================== -->
   <header class="flex items-center justify-between px-5 pt-3 pb-2 z-30">
-    <!-- Left: Friends count / Profile Button -->
+    <!-- Left: Friends selector / count -->
     <button onclick="openFriendsModal()" class="flex items-center gap-2 glass-pill px-3 py-1.5 rounded-full text-xs font-semibold text-slate-200 active:scale-95 transition-all">
       <div id="headerUserAvatar" class="w-5 h-5 rounded-full bg-gradient-to-tr from-pink-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-white">
         L
@@ -78,8 +91,8 @@
       <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
     </button>
 
-    <!-- Center: App Logo -->
-    <div class="flex items-center gap-1.5 cursor-pointer" onclick="switchMainView('camera')">
+    <!-- Center: App Logo (Click to switch to Camera) -->
+    <div class="flex items-center gap-1.5 cursor-pointer" onclick="switchToCameraMode()">
       <div class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></div>
       <span class="font-extrabold text-base tracking-wide bg-gradient-to-r from-amber-300 via-pink-400 to-amber-200 bg-clip-text text-transparent">LOCKET</span>
     </div>
@@ -101,35 +114,38 @@
       
       <!-- Locket Square Viewport -->
       <div class="locket-frame relative flex items-center justify-center">
-        <!-- Live Video Element -->
+        <!-- 1. REAL LIVE CAMERA VIDEO FEED (Bật lên là camera thật hoạt động) -->
+        <video id="cameraLiveStream" autoplay playsinline muted class="w-full h-full object-cover"></video>
+
+        <!-- 2. Captured Image or Picked Photo Element -->
+        <img id="cameraPreviewImage" class="w-full h-full object-cover hidden" alt="Captured Photo">
+
+        <!-- 3. Picked Long Video Element (2 - 5 min video) -->
         <video id="cameraPreviewVideo" autoplay loop muted playsinline class="w-full h-full object-cover hidden"></video>
-        <!-- Live Image Element -->
-        <img id="cameraPreviewImage" src="/test_sample.png" alt="Preview" class="w-full h-full object-cover">
 
-        <!-- Placeholder when nothing chosen -->
-        <div id="cameraEmptyState" onclick="document.getElementById('inputMediaFile').click()" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center cursor-pointer bg-black/40 hover:bg-black/20 transition-all hidden">
-          <div class="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-3">
-            <i data-lucide="camera" class="w-8 h-8 text-white"></i>
-          </div>
-          <p class="text-sm font-bold text-white">Chạm để chọn ảnh hoặc video dài</p>
-          <p class="text-xs text-slate-400 mt-1">Hỗ trợ video siêu dài 2 - 5 phút (HEVC)</p>
-        </div>
+        <!-- Retake / Cancel Button (X) when media is captured or picked -->
+        <button id="btnRetakeMedia" onclick="cancelCapturedMedia()" class="hidden absolute top-4 left-4 z-20 glass-pill w-9 h-9 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
 
-        <!-- Custom Caption Tag on Moment -->
-        <div id="cameraCaptionTag" class="hidden absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 flex items-center justify-center text-center z-20">
-          <span id="cameraCaptionText" class="text-xs font-semibold text-white"></span>
-        </div>
+        <!-- Flip Camera Button (Only visible during live camera mode) -->
+        <button id="btnFlipCamera" onclick="flipCameraOrientation()" class="absolute top-4 right-4 z-20 glass-pill w-9 h-9 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-lg" title="Lật camera trước/sau">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        </button>
 
-        <!-- Quick Toolbar (Top right of frame) -->
-        <div class="absolute top-3.5 right-3.5 flex flex-col gap-2 z-20">
-          <!-- Toggle Weather Radar -->
-          <button onclick="toggleWeatherRadar()" id="btnWeatherToggle" class="glass-pill w-8 h-8 rounded-full flex items-center justify-center text-cyan-400 active:scale-95 transition-all shadow-lg" title="Bật/Tắt Card Thời tiết & Radar">
+        <!-- Quick Toolbar inside frame (Weather & Frame toggles) -->
+        <div id="frameQuickToolbar" class="absolute bottom-4 right-4 flex items-center gap-2 z-20">
+          <button onclick="toggleWeatherRadar()" id="btnWeatherToggle" class="glass-pill w-8 h-8 rounded-full flex items-center justify-center text-slate-400 active:scale-95 transition-all shadow-lg" title="Bật/Tắt Card Thời tiết & Radar">
             <i data-lucide="cloud-rain" class="w-4 h-4"></i>
           </button>
-          <!-- Toggle Frame -->
-          <button onclick="cycleFrameType()" id="btnFrameCycle" class="glass-pill w-8 h-8 rounded-full flex items-center justify-center text-pink-400 active:scale-95 transition-all shadow-lg" title="Đổi khung ảnh">
+          <button onclick="cycleFrameType()" id="btnFrameCycle" class="glass-pill w-8 h-8 rounded-full flex items-center justify-center text-slate-400 active:scale-95 transition-all shadow-lg" title="Đổi khung ảnh">
             <i data-lucide="crop" class="w-4 h-4"></i>
           </button>
+        </div>
+
+        <!-- Custom Caption Tag Overlay on Moment -->
+        <div id="cameraCaptionTag" class="hidden absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 flex items-center justify-center text-center z-10">
+          <span id="cameraCaptionText" class="text-xs font-semibold text-white"></span>
         </div>
       </div>
 
@@ -139,7 +155,7 @@
         <button onclick="openColorPalette()" class="text-xs text-amber-400 hover:text-amber-300 font-medium">Màu sắc</button>
       </div>
 
-      <!-- Secret hidden file picker -->
+      <!-- Secret file input for gallery picker -->
       <input type="file" id="inputMediaFile" accept="image/*,video/*" class="hidden" onchange="handleMediaSelected(event)">
 
       <!-- Media Info & Status pill -->
@@ -173,7 +189,6 @@
 
       <!-- Active 1-on-1 Chat Subview -->
       <div id="chatDirectView" class="w-full h-full flex flex-col hidden">
-        <!-- Chat header -->
         <div class="flex items-center justify-between pb-3 border-b border-white/10 mb-2">
           <div class="flex items-center gap-3">
             <button onclick="closeDirectChat()" class="p-1 rounded-lg hover:bg-white/10 text-slate-300">
@@ -211,23 +226,22 @@
     <!-- Camera mode controls -->
     <div id="cameraControlsFooter" class="flex items-center justify-between max-w-[340px] mx-auto">
       
-      <!-- Gallery Picker Button (Opens Phone Camera Roll) -->
-      <button onclick="document.getElementById('inputMediaFile').click()" class="glass-pill w-12 h-12 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-lg" title="Chọn ảnh hoặc video từ thư viện">
+      <!-- Gallery Picker Button (Opens Phone Camera Roll / Gallery) -->
+      <button onclick="document.getElementById('inputMediaFile').click()" class="glass-pill w-12 h-12 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-lg" title="Chọn ảnh hoặc video từ thư viện máy">
         <i data-lucide="image" class="w-5 h-5 text-amber-300"></i>
       </button>
 
-      <!-- Center Big Shutter Button (Send / Capture) -->
+      <!-- Center Big Shutter Button (Capture photo or Send moment) -->
       <div class="relative flex items-center justify-center">
-        <!-- Outlined ring -->
         <div class="w-20 h-20 rounded-full border-4 border-white/80 flex items-center justify-center p-1">
-          <!-- Inner button -->
-          <button id="btnShutterAction" onclick="handleShutterButton()" class="w-full h-full rounded-full bg-amber-400 active:scale-90 transition-all shadow-xl shadow-amber-400/20 flex items-center justify-center text-black">
+          <button id="btnShutterAction" onclick="handleShutterClick()" class="w-full h-full rounded-full bg-amber-400 active:scale-90 transition-all shadow-xl shadow-amber-400/20 flex items-center justify-center text-black">
+            <!-- Icon switches between empty (camera capture mode) and send icon (when media is ready) -->
             <i id="btnShutterIcon" data-lucide="send" class="w-7 h-7 text-black hidden"></i>
           </button>
         </div>
       </div>
 
-      <!-- Feed / History Button -->
+      <!-- Feed / History Button (Xem bạn bè đăng gì) -->
       <button onclick="switchMainView('feed')" class="glass-pill w-12 h-12 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-lg" title="Xem bạn bè đăng gì">
         <i data-lucide="sparkles" class="w-5 h-5 text-pink-400"></i>
       </button>
@@ -236,7 +250,7 @@
 
     <!-- Feed / Chat Bottom Navigation Bar -->
     <div id="navFooter" class="hidden flex items-center justify-around max-w-[280px] mx-auto glass-pill py-2.5 px-4 rounded-full">
-      <button onclick="switchMainView('camera')" class="text-slate-400 hover:text-white flex flex-col items-center">
+      <button onclick="switchToCameraMode()" class="text-slate-400 hover:text-white flex flex-col items-center">
         <i data-lucide="camera" class="w-5 h-5"></i>
       </button>
       <button onclick="switchMainView('feed')" class="text-pink-400 flex flex-col items-center">
@@ -252,7 +266,7 @@
   <!-- FRIENDS SELECTION MODAL -->
   <!-- ======================================================== -->
   <div id="friendsModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col justify-end hidden">
-    <div class="bg-[#121218] border-t border-white/10 rounded-t-[36px] max-h-[80vh] flex flex-col p-6 animate-slide-up">
+    <div class="bg-[#121218] border-t border-white/10 rounded-t-[36px] max-h-[80vh] flex flex-col p-6">
       <div class="flex items-center justify-between pb-4 border-b border-white/10">
         <div>
           <h3 class="text-base font-bold text-white">Bạn bè Locket (32)</h3>
@@ -263,7 +277,6 @@
         </button>
       </div>
 
-      <!-- Friends selector list -->
       <div id="modalFriendsList" class="flex-1 overflow-y-auto space-y-2 py-4 no-scrollbar">
         <!-- Dynamically filled -->
       </div>
@@ -274,10 +287,15 @@
     </div>
   </div>
 
-  <!-- JavaScript Application Logic -->
+  <!-- Hidden in-memory canvas for camera snapshot capture -->
+  <canvas id="cameraCanvas" class="hidden" width="1080" height="1080"></canvas>
+
   <script>
     // State
     let currentView = 'camera';
+    let isLiveCamera = true;
+    let cameraStream = null;
+    let facingMode = 'user'; // 'user' (selfie) or 'environment' (back camera)
     let selectedFile = null;
     let isVideoFile = false;
     let weatherEnabled = false;
@@ -289,16 +307,147 @@
 
     lucide.createIcons();
 
-    // Switch Top Views (Camera / Feed / Chat)
+    // ==========================================
+    // REAL LIVE CAMERA ENGINE (BẬT CAMERA THẬT)
+    // ==========================================
+    async function startLiveCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn('Camera API not available');
+        return;
+      }
+
+      try {
+        if (cameraStream) {
+          cameraStream.getTracks().forEach(track => track.stop());
+        }
+
+        const constraints = {
+          video: {
+            facingMode: facingMode,
+            width: { ideal: 1080 },
+            height: { ideal: 1080 },
+            aspectRatio: 1
+          },
+          audio: false
+        };
+
+        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+        const liveVideo = document.getElementById('cameraLiveStream');
+        liveVideo.srcObject = cameraStream;
+        await liveVideo.play();
+
+        isLiveCamera = true;
+        document.getElementById('cameraLiveStream').classList.remove('hidden');
+        document.getElementById('cameraPreviewImage').classList.add('hidden');
+        document.getElementById('cameraPreviewVideo').classList.add('hidden');
+        document.getElementById('btnRetakeMedia').classList.add('hidden');
+        document.getElementById('btnFlipCamera').classList.remove('hidden');
+        document.getElementById('btnShutterIcon').classList.add('hidden');
+        document.getElementById('cameraStatusPill').classList.add('hidden');
+      } catch (err) {
+        console.warn('Camera permission or device error:', err);
+      }
+    }
+
+    function stopLiveCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+    }
+
+    function flipCameraOrientation() {
+      facingMode = facingMode === 'user' ? 'environment' : 'user';
+      startLiveCamera();
+    }
+
+    // Capture Real Photo from Live Camera
+    function capturePhotoFromCamera() {
+      const liveVideo = document.getElementById('cameraLiveStream');
+      const canvas = document.getElementById('cameraCanvas');
+      const ctx = canvas.getContext('2d');
+
+      // Flash animation
+      const flash = document.getElementById('flashOverlay');
+      flash.classList.add('flash-effect');
+      setTimeout(() => flash.classList.remove('flash-effect'), 250);
+
+      // Draw square video frame to 1080x1080 canvas
+      const minDim = Math.min(liveVideo.videoWidth || 1080, liveVideo.videoHeight || 1080);
+      const startX = ((liveVideo.videoWidth || 1080) - minDim) / 2;
+      const startY = ((liveVideo.videoHeight || 1080) - minDim) / 2;
+
+      ctx.save();
+      // Mirror selfie camera
+      if (facingMode === 'user') {
+        ctx.translate(1080, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(liveVideo, startX, startY, minDim, minDim, 0, 0, 1080, 1080);
+      ctx.restore();
+
+      canvas.toBlob(blob => {
+        selectedFile = new File([blob], `locket_snap_${Date.now()}.png`, { type: 'image/png' });
+        isVideoFile = false;
+        isLiveCamera = false;
+
+        stopLiveCamera();
+
+        document.getElementById('cameraLiveStream').classList.add('hidden');
+        document.getElementById('cameraPreviewImage').classList.remove('hidden');
+        document.getElementById('cameraPreviewVideo').classList.add('hidden');
+        document.getElementById('btnRetakeMedia').classList.remove('hidden');
+        document.getElementById('btnFlipCamera').classList.add('hidden');
+        document.getElementById('btnShutterIcon').classList.remove('hidden');
+
+        renderImagePreview();
+        lucide.createIcons();
+      }, 'image/png');
+    }
+
+    function cancelCapturedMedia() {
+      selectedFile = null;
+      isVideoFile = false;
+      document.getElementById('cameraCaptionInput').value = '';
+      document.getElementById('cameraCaptionTag').classList.add('hidden');
+      document.getElementById('cameraPreviewVideo').pause();
+      startLiveCamera();
+      lucide.createIcons();
+    }
+
+    // Shutter Button Action: Capture Photo or Post Moment
+    function handleShutterClick() {
+      if (isLiveCamera && !selectedFile) {
+        // Step 1: Capture photo from live camera
+        capturePhotoFromCamera();
+      } else {
+        // Step 2: Media is ready -> Post Moment to Locket!
+        postMomentToServer();
+      }
+    }
+
+    // Switch Views
+    function switchToCameraMode() {
+      switchMainView('camera');
+      if (!selectedFile) {
+        startLiveCamera();
+      }
+    }
+
     function switchMainView(view) {
       currentView = view;
       document.getElementById('viewCamera').classList.toggle('hidden', view !== 'camera');
       document.getElementById('viewFeed').classList.toggle('hidden', view !== 'feed');
       document.getElementById('viewChat').classList.toggle('hidden', view !== 'chat');
 
-      // Update footers
       document.getElementById('cameraControlsFooter').classList.toggle('hidden', view !== 'camera');
       document.getElementById('navFooter').classList.toggle('hidden', view === 'camera');
+
+      if (view === 'camera') {
+        if (!selectedFile) startLiveCamera();
+      } else {
+        stopLiveCamera();
+      }
 
       if (view === 'feed') {
         loadFeed();
@@ -308,68 +457,24 @@
       lucide.createIcons();
     }
 
-    // Load Friends
-    async function loadFriends() {
-      try {
-        const res = await fetch('/api/friends');
-        const data = await res.json();
-        friendsList = data.friends || [];
-        selectedFriendUids = friendsList.map(f => f.uid);
-        document.getElementById('headerFriendsText').innerText = `${friendsList.length} Bạn bè`;
-
-        const modalList = document.getElementById('modalFriendsList');
-        modalList.innerHTML = friendsList.map(f => `
-          <label class="flex items-center justify-between p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] cursor-pointer">
-            <div class="flex items-center gap-3">
-              ${f.profile_picture ? 
-                `<img src="${f.profile_picture}" class="w-9 h-9 rounded-full object-cover">` : 
-                `<div class="w-9 h-9 rounded-full bg-gradient-to-tr from-pink-500 to-indigo-500 flex items-center justify-center text-xs font-bold text-white">${(f.first_name || 'U')[0].toUpperCase()}</div>`
-              }
-              <div>
-                <div class="text-xs font-bold text-white">${f.first_name} ${f.last_name || ''}</div>
-                <div class="text-[10px] text-slate-400">@${f.username || 'locket'}</div>
-              </div>
-            </div>
-            <input type="checkbox" checked value="${f.uid}" onchange="toggleFriendSelect('${f.uid}')" class="rounded bg-slate-800 border-white/20 text-pink-500 focus:ring-0">
-          </label>
-        `).join('');
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    function toggleFriendSelect(uid) {
-      if (selectedFriendUids.includes(uid)) {
-        selectedFriendUids = selectedFriendUids.filter(id => id !== uid);
-      } else {
-        selectedFriendUids.push(uid);
-      }
-    }
-
-    function openFriendsModal() {
-      document.getElementById('friendsModal').classList.remove('hidden');
-    }
-
-    function closeFriendsModal() {
-      document.getElementById('friendsModal').classList.add('hidden');
-    }
-
-    // Media Selection (Photo or Video)
+    // Media Selected from Phone Gallery
     function handleMediaSelected(event) {
       const file = event.target.files[0];
       if (!file) return;
 
       selectedFile = file;
       isVideoFile = file.type.startsWith('video');
+      isLiveCamera = false;
+      stopLiveCamera();
+
+      document.getElementById('cameraLiveStream').classList.add('hidden');
+      document.getElementById('btnFlipCamera').classList.add('hidden');
+      document.getElementById('btnRetakeMedia').classList.remove('hidden');
+      document.getElementById('btnShutterIcon').classList.remove('hidden');
 
       const imgElem = document.getElementById('cameraPreviewImage');
       const videoElem = document.getElementById('cameraPreviewVideo');
-      const emptyState = document.getElementById('cameraEmptyState');
       const statusPill = document.getElementById('cameraStatusPill');
-      const shutterIcon = document.getElementById('btnShutterIcon');
-
-      emptyState.classList.add('hidden');
-      shutterIcon.classList.remove('hidden');
 
       if (isVideoFile) {
         imgElem.classList.add('hidden');
@@ -379,7 +484,7 @@
 
         const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
         statusPill.classList.remove('hidden');
-        statusPill.innerText = `🎬 Video ${sizeMb} MB • Sẵn sàng nén HEVC chuẩn Apple <6MB`;
+        statusPill.innerText = `🎬 Video ${sizeMb} MB • Tự động nén chuẩn Universal H.264/HEVC <6MB`;
       } else {
         videoElem.classList.add('hidden');
         videoElem.pause();
@@ -444,13 +549,8 @@
       }
     }
 
-    // Shutter Button (Click to Post Moment)
-    async function handleShutterButton() {
-      if (!selectedFile) {
-        document.getElementById('inputMediaFile').click();
-        return;
-      }
-
+    // Post Moment to Locket Server
+    async function postMomentToServer() {
       const shutterBtn = document.getElementById('btnShutterAction');
       const statusPill = document.getElementById('cameraStatusPill');
 
@@ -459,7 +559,7 @@
       lucide.createIcons();
 
       statusPill.classList.remove('hidden');
-      statusPill.innerText = isVideoFile ? 'Đang nén HEVC chuẩn Apple và gửi...' : 'Đang xử lý và gửi khoảnh khắc...';
+      statusPill.innerText = isVideoFile ? 'Đang nén video và gửi lên Locket...' : 'Đang bắn khoảnh khắc lên Widget...';
 
       try {
         const formData = new FormData();
@@ -483,12 +583,7 @@
 
         if (data.success) {
           alert('🎉 Đã bắn khoảnh khắc lên Widget bạn bè thành công!');
-          statusPill.innerText = 'Đã gửi thành công!';
-          setTimeout(() => {
-            selectedFile = null;
-            document.getElementById('btnShutterIcon').classList.add('hidden');
-            statusPill.classList.add('hidden');
-          }, 2000);
+          cancelCapturedMedia();
         } else {
           alert('Lỗi: ' + (data.error || 'Thất bại'));
         }
@@ -525,7 +620,6 @@
           return;
         }
 
-        // Render feed moments (Widget style)
         container.innerHTML = currentFeed.map(item => `
           <div class="w-full max-w-[360px] space-y-3 mb-6">
             <!-- Author Header -->
@@ -712,8 +806,55 @@
       }
     }
 
+    // Friends Modal
+    async function loadFriends() {
+      try {
+        const res = await fetch('/api/friends');
+        const data = await res.json();
+        friendsList = data.friends || [];
+        selectedFriendUids = friendsList.map(f => f.uid);
+        document.getElementById('headerFriendsText').innerText = `${friendsList.length} Bạn bè`;
+
+        const modalList = document.getElementById('modalFriendsList');
+        modalList.innerHTML = friendsList.map(f => `
+          <label class="flex items-center justify-between p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] cursor-pointer">
+            <div class="flex items-center gap-3">
+              ${f.profile_picture ? 
+                `<img src="${f.profile_picture}" class="w-9 h-9 rounded-full object-cover">` : 
+                `<div class="w-9 h-9 rounded-full bg-gradient-to-tr from-pink-500 to-indigo-500 flex items-center justify-center text-xs font-bold text-white">${(f.first_name || 'U')[0].toUpperCase()}</div>`
+              }
+              <div>
+                <div class="text-xs font-bold text-white">${f.first_name} ${f.last_name || ''}</div>
+                <div class="text-[10px] text-slate-400">@${f.username || 'locket'}</div>
+              </div>
+            </div>
+            <input type="checkbox" checked value="${f.uid}" onchange="toggleFriendSelect('${f.uid}')" class="rounded bg-slate-800 border-white/20 text-pink-500 focus:ring-0">
+          </label>
+        `).join('');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function toggleFriendSelect(uid) {
+      if (selectedFriendUids.includes(uid)) {
+        selectedFriendUids = selectedFriendUids.filter(id => id !== uid);
+      } else {
+        selectedFriendUids.push(uid);
+      }
+    }
+
+    function openFriendsModal() {
+      document.getElementById('friendsModal').classList.remove('hidden');
+    }
+
+    function closeFriendsModal() {
+      document.getElementById('friendsModal').classList.add('hidden');
+    }
+
     // Startup
     window.addEventListener('DOMContentLoaded', () => {
+      startLiveCamera();
       loadFriends();
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').catch(e => console.log(e));
