@@ -77,6 +77,11 @@ def get_client_for_request():
     CLIENTS[sid] = c
     return c, sid
 
+def _set_session_cookie(resp, sid):
+    is_https = request.is_secure or request.headers.get("X-Forwarded-Proto") == "https"
+    resp.set_cookie("locket_session_id", sid, max_age=365*86400, httponly=True, samesite="Lax", secure=is_https)
+    return resp
+
 def _get_current_client():
     c, _ = get_client_for_request()
     return c
@@ -115,7 +120,7 @@ def auth_status():
         "authenticated": is_auth,
         "user": user_info
     })
-    resp.set_cookie("locket_session_id", sid, max_age=365*86400, httponly=True, samesite="Lax")
+    _set_session_cookie(resp, sid)
     return resp
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -143,7 +148,7 @@ def auth_login():
             "success": True,
             "user": user_info
         })
-        resp.set_cookie("locket_session_id", sid, max_age=365*86400, httponly=True, samesite="Lax")
+        _set_session_cookie(resp, sid)
         return resp
     except Exception as e:
         err_msg = str(e)
@@ -195,7 +200,7 @@ def auth_logout():
         CLIENTS.pop(sid, None)
         new_sid = secrets.token_hex(16)
         resp = jsonify({"success": True})
-        resp.set_cookie("locket_session_id", new_sid, max_age=365*86400, httponly=True, samesite="Lax")
+        _set_session_cookie(resp, new_sid)
         return resp
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

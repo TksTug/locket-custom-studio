@@ -20,5 +20,5 @@ COPY . .
 ENV PORT=5050
 EXPOSE 5050
 
-# Run with python or gunicorn
-CMD ["python", "web_studio/server.py"]
+# Run with production high-concurrency Gunicorn server for multiple users
+CMD ["sh", "-c", "gunicorn --workers 3 --threads 4 --timeout 90 --bind 0.0.0.0:${PORT:-5050} web_studio.server:app"]
