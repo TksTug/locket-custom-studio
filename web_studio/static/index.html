@@ -412,6 +412,12 @@
               </svg>
             </button>
             <!-- Custom Frames Toggle -->
+            <!-- Mirror Toggle Button -->
+            <button onclick="toggleCameraMirror(event)" id="btnMirrorToggle" class="glass-pill w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-white active:scale-90 transition-all shadow-md cursor-pointer" title="Đảo chiều camera / Lật gương">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+            </button>
             <button onclick="cycleFrameType(event)" id="btnFrameCycle" class="glass-pill w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-white active:scale-90 transition-all shadow-md cursor-pointer" title="Khung ảnh VIP">
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -895,7 +901,8 @@
     let activeTab = 'camera'; // 'camera', 'goldHub', 'chat'
     let activeFeedSubTab = 'timeline'; // 'timeline', 'vip'
     let cameraStream = null;
-    let cameraFacing = 'user'; // 'user' or 'environment'
+    let cameraFacing = 'user';
+    let isCameraMirrored = false; // User requested un-flipped by default // 'user' or 'environment'
     let flashMode = 'off'; // 'off', 'on', 'auto'
     let capturedBlob = null;
     let isVideoMedia = false;
@@ -1353,8 +1360,33 @@
           audio: false
         });
         video.srcObject = cameraStream;
+        updateCameraMirrorTransform();
       } catch (err) {
         console.warn('Camera access error:', err);
+      }
+    }
+
+    function toggleCameraMirror(e) {
+      if (e) e.stopPropagation();
+      isCameraMirrored = !isCameraMirrored;
+      updateCameraMirrorTransform();
+      showToast(isCameraMirrored ? 'Đã lật gương camera' : 'Đã đảo chiều camera (chuẩn)', 'info');
+    }
+
+    function updateCameraMirrorTransform() {
+      const video = document.getElementById('cameraLiveStream');
+      const btn = document.getElementById('btnMirrorToggle');
+      if (video) {
+        video.style.transform = isCameraMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+      }
+      if (btn) {
+        if (isCameraMirrored) {
+          btn.classList.add('text-amber-400', 'border-amber-400/50');
+          btn.classList.remove('text-slate-300');
+        } else {
+          btn.classList.remove('text-amber-400', 'border-amber-400/50');
+          btn.classList.add('text-slate-300');
+        }
       }
     }
 
@@ -1412,7 +1444,7 @@
       canvas.width = video.videoWidth || 720;
       canvas.height = video.videoHeight || 720;
       const ctx = canvas.getContext('2d');
-      if (cameraFacing === 'user') {
+      if (isCameraMirrored) {
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
       }

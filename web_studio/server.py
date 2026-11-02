@@ -780,6 +780,15 @@ def post_moment():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/api/test-render-locket", methods=["GET"])
+def test_render_locket():
+    c, sid = get_client_for_request()
+    try:
+        res1 = c.post_api("getLatestMomentV2", {"should_count_missed_moments": True})
+        return jsonify({"success": True, "res": res1})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "trace": traceback.format_exc()})
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f">> Locket Custom Studio Web is running at: http://localhost:{port}")
