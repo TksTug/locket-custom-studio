@@ -1,5 +1,5 @@
 // Service Worker for Locket Custom Studio PWA
-const CACHE_NAME = 'locket-studio-v7';
+const CACHE_NAME = 'locket-studio-v9';
 const ASSETS_TO_CACHE = [
   '/manifest.json',
   '/icon-192.png',

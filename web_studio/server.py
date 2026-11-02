@@ -718,19 +718,27 @@ def post_moment():
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
             import subprocess
 
-            # Convert to standard Android-compatible H.264 + AAC + faststart
+            # Convert to standard Android-compatible H.264 + AAC + faststart (<5s transcode)
             cmd_transcode = [
                 ffmpeg_exe, "-y",
                 "-i", video_filename,
+                "-vf", "scale=w='min(720,iw)':h=-2",
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
-                "-preset", "fast",
+                "-preset", "ultrafast",
+                "-crf", "26",
+                "-b:v", "1500k",
+                "-maxrate", "2200k",
+                "-bufsize", "3000k",
                 "-c:a", "aac",
                 "-b:a", "128k",
                 "-movflags", "+faststart",
                 universal_video_path
             ]
-            subprocess.run(cmd_transcode, capture_output=True)
+            try:
+                subprocess.run(cmd_transcode, capture_output=True, timeout=60)
+            except Exception as ex:
+                print(f"Transcode warning: {ex}")
             video_path = universal_video_path if os.path.exists(universal_video_path) else video_filename
 
             # Extract first frame as thumbnail and apply effects
@@ -781,6 +789,18 @@ def post_moment():
             post_kwargs["icon"] = note_icon
 
         result = client.moments.post(**post_kwargs)
+
+        c, sid = get_client_for_request()
+        if isinstance(result, dict) and result.get("needs_client_dispatch"):
+            return jsonify({
+                "success": True,
+                "needs_client_dispatch": True,
+                "token": result.get("token") or c.session.get_valid_token(),
+                "payload": result.get("payload"),
+                "analytics": result.get("analytics") or c.device.analytics_data,
+                "thumbnail_url": result.get("thumbnail_url"),
+                "video_url": result.get("video_url")
+            })
 
         return jsonify({
             "success": True,

@@ -93,13 +93,13 @@
     .theme-diamond .gold-accent-bg { background-color: #a855f7; }
     .theme-diamond .gold-accent-border { border-color: #a855f7; }
 
-    /* Authentic Locket Squircle (40px) - Responsive & Proportional */
+    /* Authentic Locket Squircle (42px) - Uncompressed True 1:1 Aspect Ratio */
     .locket-squircle {
-      width: 100%;
-      max-width: min(340px, 86vw);
-      max-height: min(340px, 44vh);
+      width: min(88vw, 360px);
+      height: min(88vw, 360px);
       aspect-ratio: 1 / 1;
-      border-radius: 40px;
+      flex-shrink: 0 !important;
+      border-radius: 42px;
       overflow: hidden;
       position: relative;
       background: #141419;
@@ -377,10 +377,10 @@
     <!-- ======================================================== -->
     <!-- 1. TAB CAMERA (VIEWPORT GỐC TỌA ĐỘ - LOCKET GOLD) -->
     <!-- ======================================================== -->
-    <section id="viewCamera" class="w-full h-full flex flex-col items-center justify-between px-3 pb-24 pt-1 overflow-hidden" style="touch-action: pan-y;">
+    <section id="viewCamera" class="w-full h-full flex flex-col items-center justify-start px-3 pb-28 pt-1 overflow-y-auto no-scrollbar" style="touch-action: pan-y;">
       
       <!-- Camera Viewport Container -->
-      <div class="w-full flex-1 min-h-0 flex flex-col items-center justify-center py-2 space-y-2">
+      <div class="w-full flex flex-col items-center justify-start py-1 space-y-2 shrink-0">
         
         <!-- Authentic Locket Squircle Viewport (40px + Ambient Neon Aura) -->
         <div id="cameraSquircle" class="locket-squircle relative flex items-center justify-center mx-auto cursor-pointer" onclick="handleSquircleClick(event)" ondblclick="flipCameraOrientation()">
@@ -503,7 +503,7 @@
       </div>
 
       <!-- Bottom Controls Section: Shutter Row + History Pill (Well Spaced, Never Overlapping) -->
-      <div class="w-full max-w-[340px] flex flex-col items-center shrink-0 space-y-4 pb-2">
+      <div class="w-full max-w-[340px] flex flex-col items-center shrink-0 space-y-3 py-2 mt-auto">
         <!-- Action Buttons Row: Gallery | Giant Shutter | Flip Camera -->
         <div class="w-full flex items-center justify-between px-3">
           <!-- Left: Gallery Picker (🖼️ Album / Thư viện) -->
@@ -1719,6 +1719,8 @@
 
     function enterPostCaptureState() {
       isPostCaptureState = true;
+      const historyPill = document.getElementById('btnHistoryPill');
+      if (historyPill) historyPill.classList.add('hidden');
       document.getElementById('cameraLiveStream').classList.add('hidden');
       if (!isVideoMedia) {
         document.getElementById('cameraPreviewImage').classList.remove('hidden');
@@ -1743,6 +1745,8 @@
     function cancelCapturedMedia() {
       isPostCaptureState = false;
       capturedBlob = null;
+      const historyPill = document.getElementById('btnHistoryPill');
+      if (historyPill) historyPill.classList.remove('hidden');
       document.getElementById('cameraLiveStream').classList.remove('hidden');
       document.getElementById('cameraPreviewImage').classList.add('hidden');
       document.getElementById('cameraPreviewVideo').classList.add('hidden');
@@ -1778,7 +1782,7 @@
         const isSelected = selectedRecipients.has(f.uid);
         return `
           <div onclick="toggleRecipient('${f.uid}')" class="flex flex-col items-center gap-1 cursor-pointer shrink-0">
-            <div class="relative w-12 h-12 rounded-full p-0.5 transition-all ${isSelected ? 'ring-2 ring-amber-400 scale-105' : 'opacity-70'}">
+            <div class="relative w-11 h-11 rounded-full p-0.5 transition-all ${isSelected ? 'ring-2 ring-amber-400 scale-105' : 'opacity-70'}">
               ${f.profile_picture ? 
                 `<img src="${f.profile_picture}" class="w-full h-full rounded-full object-cover">` : 
                 `<div class="w-full h-full rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white">${(f.first_name || 'U')[0]}</div>`
@@ -1918,12 +1922,42 @@
         }
         const data = await res.json();
         if (data.success) {
-          statusPill.innerText = "Gửi khoảnh khắc thành công!";
+          if (data.needs_client_dispatch) {
+            statusPill.innerText = "Đang gửi trực tiếp lên Locket...";
+            const directBody = {
+              data: {
+                ...data.payload,
+                analytics: data.analytics || {
+                  platform: "ios",
+                  installation_id: "locket_gold_web",
+                  experiments: {
+                    flag_18: {"@type": "type.googleapis.com/google.protobuf.Int64Value", "value": "1203"},
+                    flag_7: {"@type": "type.googleapis.com/google.protobuf.Int64Value", "value": "800"},
+                    flag_10: {"@type": "type.googleapis.com/google.protobuf.Int64Value", "value": "505"}
+                  }
+                }
+              }
+            };
+            const directRes = await fetch("https://api.locketcamera.com/postMomentV2", {
+              method: "POST",
+              headers: {
+                "Authorization": "Bearer " + (data.token || (await getValidIdToken())),
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(directBody)
+            });
+            if (!directRes.ok) {
+              const errDirect = await directRes.text();
+              throw new Error(`Locket API ${directRes.status}: ${errDirect.slice(0, 80)}`);
+            }
+          }
+
+          statusPill.innerText = "✨ Đã gửi khoảnh khắc thành công!";
           setTimeout(() => {
             statusPill.classList.add('hidden');
             cancelCapturedMedia();
             switchMainTab('feed');
-            loadFeed();
+            loadFeed(true);
           }, 800);
         } else {
           statusPill.innerText = "Lỗi: " + (data.error || "Không gửi được");

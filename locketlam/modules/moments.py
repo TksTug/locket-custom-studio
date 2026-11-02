@@ -1020,10 +1020,23 @@ class MomentsModule:
         if video_url:
             payload["video_url"] = video_url
 
-        res = self.client.post_api("postMomentV2", payload)
-        if isinstance(res, dict) and (res.get("status") not in (200, None) or "errors" in res):
-            err_msg = res.get("errors") or res.get("error") or f"Locket API error {res.get('status')}"
-            raise LocketAPIError(f"Post moment failed: {err_msg}")
+        try:
+            res = self.client.post_api("postMomentV2", payload)
+            if isinstance(res, dict) and (res.get("status") not in (200, None) or "errors" in res):
+                err_msg = res.get("errors") or res.get("error") or f"Locket API error {res.get('status')}"
+                raise LocketAPIError(f"Post moment failed: {err_msg}")
+        except Exception as e:
+            # Datacenter block (Cloud Armor / 502 on Render): delegate dispatch to browser
+            return {
+                "needs_client_dispatch": True,
+                "payload": payload,
+                "thumbnail_url": thumb_url,
+                "video_url": video_url,
+                "caption": caption,
+                "token": self.client.session.get_valid_token(),
+                "analytics": self.client.device.analytics_data,
+                "warning": str(e)
+            }
 
         data_res = res.get("data", res)
         if isinstance(data_res, dict):
