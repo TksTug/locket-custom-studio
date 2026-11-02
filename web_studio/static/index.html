@@ -1447,13 +1447,14 @@
     // ==========================================
     // 9. FEED & KHOẢNH KHẮC ENGINE
     // ==========================================
-    async function loadFeed() {
+    async function loadFeed(forceRefresh = false) {
       const container = document.getElementById('feedMomentsList');
-      if (allMomentsList.length === 0) {
+      if (allMomentsList.length === 0 || forceRefresh) {
         container.innerHTML = '<div class="text-xs text-slate-400 py-16 text-center flex flex-col items-center gap-3"><div class="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div><span>Đang tải khoảnh khắc bạn bè...</span></div>';
       }
       try {
-        const res = await fetch('/api/feed');
+        const url = forceRefresh ? '/api/feed?refresh=true' : '/api/feed';
+        const res = await fetch(url);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         allMomentsList = data.feed || data.moments || [];
@@ -1467,7 +1468,7 @@
         renderFeedMoments();
       } catch (err) {
         console.warn('Load feed error:', err);
-        container.innerHTML = '<div class="text-xs text-rose-400 py-16 text-center cursor-pointer" onclick="loadFeed()">Lỗi kết nối tải feed. Bấm để thử lại.</div>';
+        container.innerHTML = '<div class="text-xs text-rose-400 py-16 text-center cursor-pointer" onclick="loadFeed(true)">Lỗi kết nối tải feed. Bấm để thử lại.</div>';
       }
     }
 
