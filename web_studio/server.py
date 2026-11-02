@@ -237,45 +237,28 @@ def list_friends():
             "Authorization": f"Bearer {token}"
         }
 
-        res = requests.get(url, headers=headers, timeout=10)
-        data = res.json() if res.status_code == 200 else {}
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
         doc_items = data.get("documents", [])
         uids = [doc["name"].split("/")[-1] for doc in doc_items]
 
-        # Use pooled session for ultra-fast concurrent profile lookup (<3s)
-        session = requests.Session()
-        adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=20)
-        session.mount("https://", adapter)
-        session.headers.update({
-            **c.device.default_headers,
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json; charset=utf-8"
-        })
-        fetch_user_url = f"{c.API_BASE}/fetchUserV2"
-
         def fetch_single_profile(fuid):
-            payload = {
-                "data": {
-                    "user_uid": fuid,
-                    "analytics": c.device.analytics_data
-                }
-            }
             try:
-                r = session.post(fetch_user_url, json=payload, timeout=6)
-                if r.status_code == 200:
-                    d = r.json().get("result", {}).get("data", {})
-                    return {
-                        "uid": fuid,
-                        "first_name": d.get("first_name", ""),
-                        "last_name": d.get("last_name", ""),
-                        "username": d.get("username", ""),
-                        "profile_picture": d.get("profile_picture_url")
-                    }
+                p = c.user.get_profile(fuid)
+                return {
+                    "uid": fuid,
+                    "first_name": p.get("first_name", ""),
+                    "last_name": p.get("last_name", ""),
+                    "username": p.get("username", ""),
+                    "profile_picture": p.get("profile_picture_url")
+                }
             except Exception:
                 pass
             return {"uid": fuid, "first_name": "Bạn Locket", "username": fuid[:8]}
 
-        with ThreadPoolExecutor(max_workers=16) as executor:
+        with ThreadPoolExecutor(max_workers=8) as executor:
             friends = list(executor.map(fetch_single_profile, uids))
 
         user_fcache["timestamp"] = now
@@ -325,45 +308,35 @@ def get_feed():
     if not refresh and not user_uid and len(cached_feed) > 1 and (now - user_feed_cache.get("timestamp", 0) < 45):
         return jsonify({"feed": cached_feed, "moments": cached_feed})
 
-    token = c.session.get_valid_token()
-    session = requests.Session()
-    adapter = requests.adapters.HTTPAdapter(pool_connections=25, pool_maxsize=25)
-    session.mount("https://", adapter)
-    session.headers.update({
-        **c.device.default_headers,
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=utf-8"
-    })
-
-    # 1. Ensure friends list is available
+    # 1. Ensure friends list is available (cached for 10 min)
     friends = user_fcache.get("friends", [])
     if not friends or (now - user_fcache.get("timestamp", 0) > 600):
         try:
+            token = c.session.get_valid_token()
             url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/friends"
             headers = {**c.device.default_headers, "Authorization": f"Bearer {token}"}
-            res = requests.get(url, headers=headers, timeout=8)
-            doc_items = res.json().get("documents", []) if res.status_code == 200 else []
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            doc_items = data.get("documents", [])
             uids = [doc["name"].split("/")[-1] for doc in doc_items]
 
-            fetch_user_url = f"{c.API_BASE}/fetchUserV2"
             def fetch_single_profile(fuid):
-                payload = {"data": {"user_uid": fuid, "analytics": c.device.analytics_data}}
                 try:
-                    r = session.post(fetch_user_url, json=payload, timeout=5)
-                    if r.status_code == 200:
-                        d = r.json().get("result", {}).get("data", {})
-                        return {
-                            "uid": fuid,
-                            "first_name": d.get("first_name", ""),
-                            "last_name": d.get("last_name", ""),
-                            "username": d.get("username", ""),
-                            "profile_picture": d.get("profile_picture_url")
-                        }
+                    p = c.user.get_profile(fuid)
+                    return {
+                        "uid": fuid,
+                        "first_name": p.get("first_name", ""),
+                        "last_name": p.get("last_name", ""),
+                        "username": p.get("username", ""),
+                        "profile_picture": p.get("profile_picture_url")
+                    }
                 except Exception:
                     pass
                 return {"uid": fuid, "first_name": "Bạn Locket", "username": fuid[:8]}
 
-            with ThreadPoolExecutor(max_workers=16) as executor:
+            with ThreadPoolExecutor(max_workers=8) as executor:
                 friends = list(executor.map(fetch_single_profile, uids))
             user_fcache["timestamp"] = now
             user_fcache["friends"] = friends
@@ -392,23 +365,16 @@ def get_feed():
             return friend_map[uid]
         return {"uid": uid, "first_name": "Bạn Locket", "username": uid[:8]}
 
-    post_url = f"{c.API_BASE}/getLatestMomentV2"
-
     # Filter by specific friend
     if user_uid:
         try:
             author_info = resolve_author(user_uid)
             others = [u for u in friend_uids if u != user_uid]
-            payload = {
-                "data": {
-                    "should_count_missed_moments": False,
-                    "include_group_moments": True,
-                    "excluded_users": others,
-                    "analytics": c.device.analytics_data
-                }
-            }
-            res = session.post(post_url, json=payload, timeout=8)
-            feed_res = res.json().get("result", {}) if res.status_code == 200 else {}
+            feed_res = c.post_api("getLatestMomentV2", {
+                "should_count_missed_moments": False,
+                "include_group_moments": True,
+                "excluded_users": others
+            })
             friend_feed = []
             for m in feed_res.get("data", []):
                 mid = m.get("canonical_uid")
@@ -435,27 +401,22 @@ def get_feed():
         seen_thumbs = set()
         seen_uids = set()
 
-        # HIGH-SPEED CONCURRENT FETCH VIA POOLED HTTP/2 CONNECTION (<2s)
+        # HIGH-SPEED CONCURRENT FETCH VIA AUTHENTIC URLLIB (Bypasses Cloudflare on Render)
         def fetch_friend_latest_moment(fuid):
             others = [u for u in friend_uids if u != fuid]
-            payload = {
-                "data": {
+            try:
+                res = c.post_api("getLatestMomentV2", {
                     "should_count_missed_moments": False,
                     "include_group_moments": True,
-                    "excluded_users": others,
-                    "analytics": c.device.analytics_data
-                }
-            }
-            try:
-                res = session.post(post_url, json=payload, timeout=7)
-                if res.status_code == 200:
-                    return res.json().get("result", {}).get("data", [])
+                    "excluded_users": others
+                })
+                return res.get("data", [])
             except Exception:
                 pass
             return []
 
         if friend_uids:
-            with ThreadPoolExecutor(max_workers=16) as executor:
+            with ThreadPoolExecutor(max_workers=10) as executor:
                 friend_results = list(executor.map(fetch_friend_latest_moment, friend_uids))
 
             for batch in friend_results:
@@ -482,42 +443,14 @@ def get_feed():
 
         # Fetch our own latest moment from Locket server
         try:
-            my_payload = {
-                "data": {
-                    "should_count_missed_moments": False,
-                    "include_group_moments": True,
-                    "excluded_users": friend_uids,
-                    "analytics": c.device.analytics_data
-                }
-            }
-            my_res = session.post(post_url, json=my_payload, timeout=6)
-            if my_res.status_code == 200:
-                for m in my_res.json().get("result", {}).get("data", []):
-                    mid = m.get("canonical_uid")
-                    thumb = m.get("thumbnail_url")
-                    if thumb and thumb not in seen_thumbs:
-                        seen_thumbs.add(thumb)
-                        if mid:
-                            seen_uids.add(mid)
-                        feed_items.append({
-                            "moment_uid": mid,
-                            "thumbnail_url": thumb,
-                            "video_url": m.get("video_url"),
-                            "caption": m.get("caption", ""),
-                            "date": m.get("date"),
-                            "timestamp": parse_moment_timestamp(m.get("date")),
-                            "author": my_info,
-                            "user": my_uid
-                        })
-        except Exception:
-            pass
-
-        # Also load user's posted moments from their specific moment history file
-        try:
-            local_history = c.moments._load_history()
-            for p in local_history:
-                thumb = p.get("thumbnail_url")
-                mid = p.get("moment_uid") or p.get("canonical_uid")
+            my_res = c.post_api("getLatestMomentV2", {
+                "should_count_missed_moments": False,
+                "include_group_moments": True,
+                "excluded_users": friend_uids
+            })
+            for m in my_res.get("data", []):
+                mid = m.get("canonical_uid")
+                thumb = m.get("thumbnail_url")
                 if thumb and thumb not in seen_thumbs:
                     seen_thumbs.add(thumb)
                     if mid:
@@ -525,10 +458,10 @@ def get_feed():
                     feed_items.append({
                         "moment_uid": mid,
                         "thumbnail_url": thumb,
-                        "video_url": p.get("video_url"),
-                        "caption": p.get("caption", ""),
-                        "date": p.get("created_at"),
-                        "timestamp": parse_moment_timestamp(p.get("created_at")),
+                        "video_url": m.get("video_url"),
+                        "caption": m.get("caption", ""),
+                        "date": m.get("date"),
+                        "timestamp": parse_moment_timestamp(m.get("date")),
                         "author": my_info,
                         "user": my_uid
                     })

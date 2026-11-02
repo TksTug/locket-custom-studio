@@ -115,7 +115,7 @@ class LocketClient:
 
         req = urllib.request.Request(url, data=raw_data, headers=headers)
         try:
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data.get("result", data)
         except urllib.error.HTTPError as e:
