@@ -1,7 +1,6 @@
 // Service Worker for Locket Custom Studio PWA
-const CACHE_NAME = 'locket-studio-v1';
+const CACHE_NAME = 'locket-studio-v2';
 const ASSETS_TO_CACHE = [
-  '/',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png'
@@ -32,9 +31,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Always fetch dynamic API requests from network
-  if (event.request.url.includes('/api/')) {
-    event.respondWith(fetch(event.request));
+  // Always fetch dynamic API requests or navigation from network first
+  if (event.request.url.includes('/api/') || event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
     return;
   }
   event.respondWith(
