@@ -1638,24 +1638,166 @@
     }
 
     // ==========================================
-    // 9. FEED & KHOẢNH KHẮC ENGINE
+    // 9. FEED & KHOẢNH KHẮC ENGINE (Direct Authentic CORS Feed Architecture)
     // ==========================================
+    let cachedIdToken = null;
+
+    async function getValidIdToken() {
+      if (cachedIdToken) return cachedIdToken;
+      try {
+        const res = await fetch('/api/auth/token');
+        if (res.ok) {
+          const d = await res.json();
+          if (d.token) {
+            cachedIdToken = d.token;
+            return d.token;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not fetch token:', e);
+      }
+      return null;
+    }
+
+    async function fetchLocketFeedDirectly() {
+      const token = await getValidIdToken();
+      if (!token) return null;
+
+      const friendMap = {};
+      for (const f of allFriendsList) {
+        if (f.uid) friendMap[f.uid] = f;
+      }
+
+      const seenUids = [];
+      const authenticMoments = [];
+
+      try {
+        // Fetch authentic latest moments from friends sequentially (stops when empty)
+        for (let step = 0; step < 25; step++) {
+          const apiRes = await fetch('https://api.locketcamera.com/getLatestMomentV2', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + token,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              data: {
+                should_count_missed_moments: true,
+                include_group_moments: true,
+                excluded_users: seenUids
+              }
+            })
+          });
+
+          if (!apiRes.ok) break;
+          const apiJson = await apiRes.json();
+          const batch = apiJson.result?.data || [];
+          if (!batch || batch.length === 0) break;
+
+          const m = batch[0];
+          const u = m.user;
+          if (!u || seenUids.includes(u)) break;
+          seenUids.push(u);
+
+          let author = friendMap[u];
+          if (!author) {
+            if (currentUserProfile && u === currentUserProfile.uid) {
+              author = currentUserProfile;
+            } else {
+              author = { uid: u, first_name: `@${u.slice(0, 6)}`, username: u.slice(0, 8) };
+            }
+          }
+
+          let ts = Date.now() / 1000;
+          if (m.date && m.date._seconds) {
+            ts = m.date._seconds;
+          }
+
+          authenticMoments.push({
+            moment_uid: m.canonical_uid || m.md5,
+            thumbnail_url: m.thumbnail_url || m.image_url,
+            video_url: m.video_url || null,
+            caption: m.caption || '',
+            date: m.date,
+            timestamp: ts,
+            author: author,
+            user: u
+          });
+        }
+
+        // Also fetch user's own latest moment
+        if (allFriendsList.length > 0) {
+          try {
+            const allFriendUids = allFriendsList.map(f => f.uid).filter(Boolean);
+            const myRes = await fetch('https://api.locketcamera.com/getLatestMomentV2', {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                data: {
+                  should_count_missed_moments: false,
+                  include_group_moments: true,
+                  excluded_users: allFriendUids
+                }
+              })
+            });
+            if (myRes.ok) {
+              const myJson = await myRes.json();
+              const myBatch = myJson.result?.data || [];
+              for (const m of myBatch) {
+                if (m.thumbnail_url && !authenticMoments.some(x => x.thumbnail_url === m.thumbnail_url)) {
+                  let ts = m.date?._seconds || Date.now() / 1000;
+                  authenticMoments.push({
+                    moment_uid: m.canonical_uid || m.md5,
+                    thumbnail_url: m.thumbnail_url,
+                    video_url: m.video_url || null,
+                    caption: m.caption || '',
+                    date: m.date,
+                    timestamp: ts,
+                    author: currentUserProfile || { first_name: 'Bạn', username: 'me' },
+                    user: m.user
+                  });
+                }
+              }
+            }
+          } catch (e) {}
+        }
+
+        authenticMoments.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        return authenticMoments;
+      } catch (err) {
+        console.warn('Direct feed fetch error:', err);
+        return null;
+      }
+    }
+
     async function loadFeed(forceRefresh = false) {
       const container = document.getElementById('feedMomentsList');
       if (allMomentsList.length === 0 || forceRefresh) {
         container.innerHTML = renderFeedSkeleton();
       }
       try {
-        const url = forceRefresh ? '/api/feed?refresh=true' : '/api/feed';
-        const res = await fetch(url);
-        if (res.status === 401) {
-          const restored = await checkAuthStatus();
-          if (restored) return loadFeed(forceRefresh);
-          throw new Error('Phiên đăng nhập hết hạn');
+        if (allFriendsList.length === 0) {
+          await loadFriends();
         }
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        allMomentsList = data.feed || data.moments || [];
+
+        // 1. Try Direct Authentic Feed via CORS (Zero datacenter block, exact captions and friends)
+        let directMoments = await fetchLocketFeedDirectly();
+
+        if (directMoments && directMoments.length > 0) {
+          allMomentsList = directMoments;
+        } else {
+          // 2. Fallback to server API if needed
+          const url = forceRefresh ? '/api/feed?refresh=true' : '/api/feed';
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            allMomentsList = data.feed || data.moments || [];
+          }
+        }
+
         if (allMomentsList.length > 0 && allMomentsList[0].thumbnail_url) {
           const thumbEl = document.getElementById('historyThumbAvatar');
           if (thumbEl) {
@@ -1720,24 +1862,63 @@
       renderFeedFilterChips();
 
       const container = document.getElementById('feedMomentsList');
+
+      // Instant in-memory filter if already in allMomentsList
+      if (uid) {
+        const found = allMomentsList.filter(m => m.user === uid || (m.author && m.author.uid === uid));
+        if (found.length > 0) {
+          renderFeedMoments(found);
+          return;
+        }
+      }
+
       container.innerHTML = renderFeedSkeleton();
 
-      try {
-        const url = uid ? `/api/feed?user_uid=${uid}` : `/api/feed?refresh=true`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        const moments = data.feed || data.moments || [];
-        if (uid) {
-          renderFeedMoments(moments);
-        } else {
-          allMomentsList = moments;
-          renderFeedMoments(allMomentsList);
+      // Fetch authentic moment directly for this friend if not in list
+      const token = await getValidIdToken();
+      if (token && uid && allFriendsList.length > 0) {
+        try {
+          const otherUids = allFriendsList.map(f => f.uid).filter(id => id && id !== uid);
+          const apiRes = await fetch('https://api.locketcamera.com/getLatestMomentV2', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + token,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              data: {
+                should_count_missed_moments: false,
+                include_group_moments: true,
+                excluded_users: otherUids
+              }
+            })
+          });
+          if (apiRes.ok) {
+            const apiJson = await apiRes.json();
+            const batch = apiJson.result?.data || [];
+            if (batch.length > 0) {
+              const m = batch[0];
+              const author = allFriendsList.find(f => f.uid === uid) || { first_name: 'Bạn bè' };
+              const item = {
+                moment_uid: m.canonical_uid || m.md5,
+                thumbnail_url: m.thumbnail_url || m.image_url,
+                video_url: m.video_url || null,
+                caption: m.caption || '',
+                date: m.date,
+                timestamp: m.date?._seconds || Date.now() / 1000,
+                author: author,
+                user: uid
+              };
+              renderFeedMoments([item]);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Friend moment fetch error:', e);
         }
-      } catch (err) {
-        console.warn('Filter friend moments error:', err);
-        renderFeedMoments();
       }
+
+      renderFeedMoments();
     }
 
     function renderFeedMoments(momentsList = null) {
@@ -2285,6 +2466,7 @@
               if (rData.success && rData.user) {
                 currentUserProfile = rData.user;
                 if (rData.refresh_token) localStorage.setItem('locket_refresh_token', rData.refresh_token);
+                if (rData.id_token) cachedIdToken = rData.id_token;
                 const img = document.getElementById('topBarUserAvatarImg');
                 if (img && rData.user.profile_picture) img.src = rData.user.profile_picture;
                 document.getElementById('viewLogin').classList.add('hidden');

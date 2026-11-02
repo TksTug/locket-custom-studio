@@ -116,9 +116,11 @@ def auth_status():
                 "last_name": ""
             }
 
+    id_tok = c.session.get_valid_token() if is_auth else None
     resp = jsonify({
         "authenticated": is_auth,
-        "user": user_info
+        "user": user_info,
+        "id_token": id_tok
     })
     _set_session_cookie(resp, sid)
     return resp
@@ -147,7 +149,8 @@ def auth_login():
         resp = jsonify({
             "success": True,
             "user": user_info,
-            "refresh_token": c.session.refresh_token
+            "refresh_token": c.session.refresh_token,
+            "id_token": c.session.get_valid_token()
         })
         _set_session_cookie(resp, sid)
         return resp
@@ -182,7 +185,8 @@ def restore_session():
         resp = jsonify({
             "success": True,
             "user": user_info,
-            "refresh_token": c.session.refresh_token
+            "refresh_token": c.session.refresh_token,
+            "id_token": c.session.get_valid_token()
         })
         _set_session_cookie(resp, sid)
         return resp
@@ -319,6 +323,13 @@ def get_user_friends(c, my_uid, force_refresh=False):
     except Exception as e:
         traceback.print_exc()
         return user_fcache.get("friends", [])
+
+@app.route("/api/auth/token", methods=["GET"])
+def get_auth_token():
+    c, sid = get_client_for_request()
+    if not c.is_authenticated():
+        return jsonify({"authenticated": False, "token": None}), 401
+    return jsonify({"authenticated": True, "token": c.session.get_valid_token(), "uid": c.session.uid})
 
 @app.route("/api/friends", methods=["GET"])
 def list_friends():
