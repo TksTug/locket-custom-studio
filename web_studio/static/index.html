@@ -168,6 +168,8 @@
 
     /* REAL-TIME CURATED LUXURY GOLD FILTERS */
     .filter-none { filter: none; }
+    .filter-paris-ig { filter: brightness(1.08) contrast(0.96) saturate(1.15) hue-rotate(4deg); }
+    .filter-camcorder { filter: sepia(0.35) contrast(1.15) brightness(0.95) saturate(1.1); }
     .filter-portra { filter: sepia(0.22) contrast(1.18) brightness(1.04) saturate(1.22); }
     .filter-teal-orange { filter: contrast(1.22) saturate(1.35) hue-rotate(-15deg) brightness(1.02); }
     .filter-korean { filter: brightness(1.12) contrast(0.96) saturate(1.2) hue-rotate(6deg); }
@@ -453,16 +455,19 @@
         </div>
 
         <!-- 3. REAL-TIME GOLD FILTER SELECTOR BAR (CHỈ HIỆN Ở MÀN HÌNH HẬU KỲ SAU KHI CHỤP XONG) -->
-        <div id="postCaptureFilterBar" class="hidden w-full max-w-[360px] flex flex-col space-y-1 py-1 px-1">
+        <!-- Live & Post-Capture Filter Selector Bar -->
+        <div id="postCaptureFilterBar" class="w-full max-w-[360px] flex flex-col space-y-1 py-1 px-1 transition-all">
           <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 font-semibold">
-            <span>✨ Vuốt ảnh sang phải/trái để đổi bộ lọc</span>
+            <span>✨ Chọn bộ lọc trực tiếp hoặc vuốt trên camera:</span>
             <span id="activeFilterPill" class="text-amber-400 font-bold">✨ Gốc</span>
           </div>
           <div id="postCaptureFilterList" class="w-full flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
             <button onclick="applyGoldFilter('filter-none', '✨ Gốc')" data-filter="filter-none" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-amber-400 border border-amber-400/50 shadow-sm active:scale-95">✨ Gốc</button>
+            <button onclick="applyGoldFilter('filter-paris-ig', '🌸 Paris IG')" data-filter="filter-paris-ig" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌸 Paris (IG)</button>
             <button onclick="applyGoldFilter('filter-portra', '🎞️ Kodak Portra')" data-filter="filter-portra" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎞️ Portra</button>
-            <button onclick="applyGoldFilter('filter-teal-orange', '🎬 Teal & Orange')" data-filter="filter-teal-orange" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎬 Teal</button>
+            <button onclick="applyGoldFilter('filter-camcorder', '📅 90s Cam TikTok')" data-filter="filter-camcorder" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">📅 90s Cam</button>
             <button onclick="applyGoldFilter('filter-korean', '🌸 Korean Soft')" data-filter="filter-korean" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌸 Pastel</button>
+            <button onclick="applyGoldFilter('filter-teal-orange', '🎬 Teal & Orange')" data-filter="filter-teal-orange" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎬 Teal</button>
             <button onclick="applyGoldFilter('filter-golden', '🌅 Golden Hour')" data-filter="filter-golden" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌅 Golden</button>
             <button onclick="applyGoldFilter('filter-vintage', '📻 Retro 1998')" data-filter="filter-vintage" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">📻 1998</button>
             <button onclick="applyGoldFilter('filter-cyberpunk', '⚡ Cyberpunk')" data-filter="filter-cyberpunk" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">⚡ Cyber</button>
@@ -1189,9 +1194,11 @@
     // ==========================================
     const GOLD_FILTERS = [
       'filter-none',
+      'filter-paris-ig',
       'filter-portra',
-      'filter-teal-orange',
+      'filter-camcorder',
       'filter-korean',
+      'filter-teal-orange',
       'filter-golden',
       'filter-vintage',
       'filter-cyberpunk',
@@ -1202,9 +1209,11 @@
 
     const FILTER_NAMES = {
       'filter-none': '✨ Gốc (Natural)',
-      'filter-portra': '🎞️ Kodak Portra 400',
-      'filter-teal-orange': '🎬 Cinematic Teal',
+      'filter-paris-ig': '🌸 Instagram Paris (Mịn sáng)',
+      'filter-portra': '🎞️ Kodak Portra 400 (Film IG)',
+      'filter-camcorder': '📅 TikTok 90s Camcorder',
       'filter-korean': '🌸 Korean Soft Pastel',
+      'filter-teal-orange': '🎬 Cinematic Teal & Orange',
       'filter-golden': '🌅 Golden Hour Glow',
       'filter-vintage': '📻 Retro 1998 Analog',
       'filter-cyberpunk': '⚡ Cyberpunk Neon',
@@ -1215,9 +1224,11 @@
 
     const FILTER_CSS_MAP = {
       'filter-none': 'none',
+      'filter-paris-ig': 'brightness(1.08) contrast(0.96) saturate(1.15) hue-rotate(4deg)',
       'filter-portra': 'sepia(0.22) contrast(1.18) brightness(1.04) saturate(1.22)',
-      'filter-teal-orange': 'contrast(1.22) saturate(1.35) hue-rotate(-15deg) brightness(1.02)',
+      'filter-camcorder': 'sepia(0.35) contrast(1.15) brightness(0.95) saturate(1.1)',
       'filter-korean': 'brightness(1.12) contrast(0.96) saturate(1.2) hue-rotate(6deg)',
+      'filter-teal-orange': 'contrast(1.22) saturate(1.35) hue-rotate(-15deg) brightness(1.02)',
       'filter-golden': 'saturate(1.55) sepia(0.28) brightness(1.06) contrast(1.12)',
       'filter-vintage': 'sepia(0.48) contrast(1.12) brightness(0.92) saturate(0.85)',
       'filter-cyberpunk': 'contrast(1.3) hue-rotate(-30deg) saturate(1.75) brightness(1.06)',
@@ -1575,7 +1586,27 @@
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
       }
+      if (activeFilterClass !== 'filter-none' && FILTER_CSS_MAP[activeFilterClass]) {
+        ctx.filter = FILTER_CSS_MAP[activeFilterClass];
+      }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
+
+      // If Camcorder 90s filter, stamp digital date
+      if (activeFilterClass === 'filter-camcorder') {
+        const d = new Date();
+        const yr = String(d.getFullYear()).slice(-2);
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const dateStr = `'${yr} ${mo} ${day}`;
+        ctx.fillStyle = '#ff7b00';
+        ctx.font = `bold ${Math.round(canvas.height * 0.038)}px monospace`;
+        ctx.textAlign = 'right';
+        ctx.shadowColor = '#000000';
+        ctx.shadowBlur = 4;
+        ctx.fillText(dateStr, canvas.width - Math.round(canvas.width * 0.05), canvas.height - Math.round(canvas.height * 0.05));
+        ctx.shadowBlur = 0;
+      }
 
       // Turn off flash overlay & torch
       if (isFlashActive) {
@@ -1648,7 +1679,6 @@
       document.getElementById('cameraPreviewVideo').classList.add('hidden');
       document.getElementById('btnRetakeMedia').classList.add('hidden');
       document.getElementById('recipientMatrixContainer').classList.add('hidden');
-      document.getElementById('postCaptureFilterBar').classList.add('hidden');
       document.getElementById('cameraCaptionInput').value = '';
 
       // Revert shutter
@@ -2973,32 +3003,17 @@
 
         // 1. Màn hình CAMERA:
         if (activeTab === 'camera') {
-          // A. Khi ĐÃ CHỤP XONG (Màn hình hậu kỳ / Post-Capture): Vuốt TRÁI/PHẢI để đổi bộ lọc màu
-          if (isPostCaptureState) {
-            if (absX > absY && absX > 35) {
-              if (dx > 0) {
-                // Vuốt QUA PHẢI -> Đổi bộ lọc kế tiếp (hoặc trước đó)
-                cycleFilterSwipe('prev');
-              } else {
-                // Vuốt QUA TRÁI -> Đổi bộ lọc tiếp theo
-                cycleFilterSwipe('next');
-              }
+          // Vuốt NGANG TRÁI/PHẢI trên camera (cả khi đang ngắm lẫn khi đã chụp xong) -> Đổi bộ lọc trực tiếp!
+          if (absX > absY && absX > 35) {
+            if (dx > 0) {
+              cycleFilterSwipe('prev');
+            } else {
+              cycleFilterSwipe('next');
             }
           }
-          // B. Khi ĐANG NGẮM CAMERA (Chưa chụp):
-          else {
-            // Vuốt DỌC -> Mở Feed / Lịch sử khoảnh khắc
-            if (absY > absX && absY > 40) {
-              switchMainTab('feed');
-            }
-            // Vuốt NGANG
-            else if (absX > absY && absX > 45) {
-              if (dx < 0) {
-                switchMainTab('chat');
-              } else {
-                cycleFilterSwipe('next');
-              }
-            }
+          // Vuốt DỌC (Lên/Xuống khi chưa chụp) -> Mở Feed khoảnh khắc
+          else if (!isPostCaptureState && absY > absX && absY > 45) {
+            switchMainTab('feed');
           }
         }
         // 2. Màn hình CHAT: Vuốt SANG PHẢI để quay lại Camera
