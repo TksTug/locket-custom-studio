@@ -13,3 +13,6 @@ chat_history.json
 groups_state.json
 .venv/
 env/
+
+cloudflared.exe
+LINK_CONG_KHAI.txt
