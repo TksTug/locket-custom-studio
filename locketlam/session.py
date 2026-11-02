@@ -110,6 +110,8 @@ class SessionManager:
 
         self.id_token = res_data["id_token"]
         self.refresh_token = res_data["refresh_token"]
+        if "user_id" in res_data:
+            self.uid = res_data["user_id"]
         self.expires_at = int(time.time() * 1000) + int(res_data["expires_in"]) * 1000
         self.save()
 

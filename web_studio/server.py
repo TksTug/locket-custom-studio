@@ -146,7 +146,8 @@ def auth_login():
         }
         resp = jsonify({
             "success": True,
-            "user": user_info
+            "user": user_info,
+            "refresh_token": c.session.refresh_token
         })
         _set_session_cookie(resp, sid)
         return resp
@@ -157,6 +158,36 @@ def auth_login():
         elif "EMAIL_NOT_FOUND" in err_msg:
             err_msg = "Email này chưa được đăng ký trên Locket! Vui lòng kiểm tra lại email trong app Locket của bạn."
         return jsonify({"success": False, "error": err_msg}), 401
+
+@app.route("/api/auth/restore-session", methods=["POST"])
+def restore_session():
+    data = request.json or {}
+    ref_token = data.get("refresh_token", "").strip()
+    if not ref_token:
+        return jsonify({"success": False, "error": "Thiếu refresh_token"}), 400
+
+    c, sid = get_client_for_request()
+    try:
+        c.session.refresh_token = ref_token
+        c.session.refresh()
+        profile = c.user.get_profile()
+        user_info = {
+            "uid": c.session.uid,
+            "email": c.session.email,
+            "first_name": profile.get("first_name", ""),
+            "last_name": profile.get("last_name", ""),
+            "username": profile.get("username", ""),
+            "profile_picture": profile.get("profile_picture_url")
+        }
+        resp = jsonify({
+            "success": True,
+            "user": user_info,
+            "refresh_token": c.session.refresh_token
+        })
+        _set_session_cookie(resp, sid)
+        return resp
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 401
 
 @app.route("/api/auth/reset-password", methods=["POST"])
 def reset_password():
@@ -239,24 +270,29 @@ def get_user_friends(c, my_uid, force_refresh=False):
         doc_items = data.get("documents", [])
         uids = [doc["name"].split("/")[-1] for doc in doc_items]
 
+        existing_map = {f["uid"]: f for f in user_fcache.get("friends", [])}
+
         def fetch_single_profile(fuid):
+            if fuid in existing_map and existing_map[fuid].get("first_name") and not existing_map[fuid]["first_name"].startswith("@") and not existing_map[fuid]["first_name"].startswith("Bạn bè ("):
+                return existing_map[fuid]
             try:
                 p = c.user.get_profile(fuid)
                 fn = (p.get("first_name") or "").strip()
                 ln = (p.get("last_name") or "").strip()
                 un = (p.get("username") or "").strip()
-                return {
-                    "uid": fuid,
-                    "first_name": fn or un or f"Bạn bè ({fuid[:4]})",
-                    "last_name": ln,
-                    "username": un or fuid[:8],
-                    "profile_picture": p.get("profile_picture_url")
-                }
+                if fn or un:
+                    return {
+                        "uid": fuid,
+                        "first_name": fn or un,
+                        "last_name": ln,
+                        "username": un or fuid[:8],
+                        "profile_picture": p.get("profile_picture_url")
+                    }
             except Exception:
                 pass
-            return {"uid": fuid, "first_name": f"Bạn bè ({fuid[:4]})", "username": fuid[:8]}
+            return existing_map.get(fuid, {"uid": fuid, "first_name": f"@{fuid[:6]}", "username": fuid[:8]})
 
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
             friends = list(executor.map(fetch_single_profile, uids))
 
         user_fcache["timestamp"] = now
@@ -306,7 +342,7 @@ def parse_moment_timestamp(val):
 def get_feed():
     c, sid = get_client_for_request()
     if not c.is_authenticated():
-        return jsonify({"feed": [], "moments": []})
+        return jsonify({"feed": [], "moments": [], "authenticated": False}), 401
 
     now = time.time()
     my_uid = c.session.uid or "anonymous"
@@ -314,16 +350,27 @@ def get_feed():
     refresh = request.args.get("refresh") == "true"
 
     user_feed_cache = USER_FEED_CACHE.setdefault(my_uid, {"timestamp": 0, "feed": []})
-    user_fcache = USER_FRIENDS_CACHE.setdefault(my_uid, {"timestamp": 0, "friends": []})
+    disk_feed_file = os.path.join(SESSIONS_DIR, f"feed_{my_uid}.json")
 
-    # Return cached feed only if healthy (>1 item) and fresh (<45s) unless refresh requested
+    # Serve memory cache if healthy (>1 item) and fresh (<60s) unless refresh requested
     cached_feed = user_feed_cache.get("feed", [])
-    if not refresh and not user_uid and len(cached_feed) > 1 and (now - user_feed_cache.get("timestamp", 0) < 45):
+    if not refresh and not user_uid and len(cached_feed) > 1 and (now - user_feed_cache.get("timestamp", 0) < 60):
         return jsonify({"feed": cached_feed, "moments": cached_feed})
 
-    # 1. Ensure friends list is available (cached for 10 min)
-    friends = get_user_friends(c, my_uid, force_refresh=refresh)
+    # Serve disk cache if available and not forced refresh
+    if not refresh and not user_uid and len(cached_feed) <= 1 and os.path.exists(disk_feed_file):
+        try:
+            with open(disk_feed_file, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if len(d.get("feed", [])) > 1 and (now - d.get("timestamp", 0) < 180):
+                    user_feed_cache["timestamp"] = d["timestamp"]
+                    user_feed_cache["feed"] = d["feed"]
+                    return jsonify({"feed": d["feed"], "moments": d["feed"]})
+        except Exception:
+            pass
 
+    # Ensure friends list is available
+    friends = get_user_friends(c, my_uid, force_refresh=refresh)
     friend_map = {f["uid"]: f for f in friends if "uid" in f}
     friend_uids = [f["uid"] for f in friends if "uid" in f]
 
@@ -341,11 +388,28 @@ def get_feed():
             return {"first_name": "Bạn bè", "username": "locket"}
         if uid == my_uid:
             return my_info
-        if uid in friend_map:
+        if uid in friend_map and friend_map[uid].get("first_name") and not friend_map[uid]["first_name"].startswith("Bạn bè ("):
             return friend_map[uid]
-        return {"uid": uid, "first_name": f"Bạn bè ({uid[:4]})", "username": uid[:8]}
+        # Try fetching real profile if only fallback exists
+        try:
+            p = c.user.get_profile(uid)
+            fn = (p.get("first_name") or "").strip()
+            ln = (p.get("last_name") or "").strip()
+            un = (p.get("username") or "").strip()
+            prof = {
+                "uid": uid,
+                "first_name": fn or un or f"@{uid[:6]}",
+                "last_name": ln,
+                "username": un or uid[:8],
+                "profile_picture": p.get("profile_picture_url")
+            }
+            friend_map[uid] = prof
+            return prof
+        except Exception:
+            pass
+        return friend_map.get(uid, {"uid": uid, "first_name": f"@{uid[:6]}", "username": uid[:8]})
 
-    # Filter by specific friend
+    # Filter by single friend
     if user_uid:
         try:
             author_info = resolve_author(user_uid)
@@ -376,52 +440,50 @@ def get_feed():
             traceback.print_exc()
             return jsonify({"feed": [], "moments": [], "error": str(e)})
 
+    # Traversal of all friends' latest moments (Genuine Locket Algorithm)
     try:
         feed_items = []
         seen_thumbs = set()
         seen_uids = set()
+        seen_users = []
 
-        # HIGH-SPEED CONCURRENT FETCH VIA AUTHENTIC URLLIB (Bypasses Cloudflare on Render)
-        def fetch_friend_latest_moment(fuid):
-            others = [u for u in friend_uids if u != fuid]
-            try:
-                res = c.post_api("getLatestMomentV2", {
-                    "should_count_missed_moments": False,
-                    "include_group_moments": True,
-                    "excluded_users": others
-                })
-                return res.get("data", [])
-            except Exception:
-                pass
-            return []
+        # Sequential feed traversal (fetches up to 20 recent moments from friends)
+        for _ in range(20):
+            res = c.post_api("getLatestMomentV2", {
+                "should_count_missed_moments": True,
+                "include_group_moments": True,
+                "excluded_users": seen_users
+            })
+            data = res.get("data", [])
+            if not data:
+                break
+            m = data[0]
+            u = m.get("user")
+            if not u or u in seen_users:
+                break
+            seen_users.append(u)
 
-        if friend_uids:
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                friend_results = list(executor.map(fetch_friend_latest_moment, friend_uids))
+            thumb = m.get("thumbnail_url")
+            mid = m.get("canonical_uid")
+            if not thumb or thumb in seen_thumbs:
+                continue
+            seen_thumbs.add(thumb)
+            if mid:
+                seen_uids.add(mid)
 
-            for batch in friend_results:
-                for m in batch:
-                    mid = m.get("canonical_uid")
-                    thumb = m.get("thumbnail_url")
-                    if not thumb or thumb in seen_thumbs or (mid and mid in seen_uids):
-                        continue
-                    seen_thumbs.add(thumb)
-                    if mid:
-                        seen_uids.add(mid)
-                    u = m.get("user")
-                    author = resolve_author(u)
-                    feed_items.append({
-                        "moment_uid": mid,
-                        "thumbnail_url": thumb,
-                        "video_url": m.get("video_url"),
-                        "caption": m.get("caption", ""),
-                        "date": m.get("date"),
-                        "timestamp": parse_moment_timestamp(m.get("date")),
-                        "author": author,
-                        "user": u
-                    })
+            author = resolve_author(u)
+            feed_items.append({
+                "moment_uid": mid,
+                "thumbnail_url": thumb,
+                "video_url": m.get("video_url"),
+                "caption": m.get("caption", ""),
+                "date": m.get("date"),
+                "timestamp": parse_moment_timestamp(m.get("date")),
+                "author": author,
+                "user": u
+            })
 
-        # Fetch our own latest moment from Locket server
+        # Also include user's own latest moment
         try:
             my_res = c.post_api("getLatestMomentV2", {
                 "should_count_missed_moments": False,
@@ -433,8 +495,6 @@ def get_feed():
                 thumb = m.get("thumbnail_url")
                 if thumb and thumb not in seen_thumbs:
                     seen_thumbs.add(thumb)
-                    if mid:
-                        seen_uids.add(mid)
                     feed_items.append({
                         "moment_uid": mid,
                         "thumbnail_url": thumb,
@@ -448,15 +508,22 @@ def get_feed():
         except Exception:
             pass
 
-        # Sort strictly by timestamp descending (newest moments first)
+        # Sort strictly by timestamp descending (newest first)
         feed_items.sort(key=lambda x: x.get("timestamp", 0.0), reverse=True)
 
-        user_feed_cache["timestamp"] = now
-        user_feed_cache["feed"] = feed_items
+        if len(feed_items) > 0:
+            user_feed_cache["timestamp"] = now
+            user_feed_cache["feed"] = feed_items
+            try:
+                with open(disk_feed_file, "w", encoding="utf-8") as f:
+                    json.dump({"timestamp": now, "feed": feed_items}, f, ensure_ascii=False)
+            except Exception:
+                pass
+
         return jsonify({"feed": feed_items, "moments": feed_items})
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"feed": [], "moments": [], "error": str(e)})
+        return jsonify({"feed": user_feed_cache.get("feed", []), "moments": user_feed_cache.get("feed", []), "error": str(e)})
 
 @app.route("/api/moments/react", methods=["POST"])
 def react_moment():
@@ -762,35 +829,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f">> Locket Custom Studio Web is running at: http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)
-
-@app.route("/api/test_locket", methods=["GET"])
-def test_locket():
-    c, sid = get_client_for_request()
-    if not c.is_authenticated():
-        files = [f for f in os.listdir(SESSIONS_DIR) if f.endswith(".json") and not f.startswith("friends_")]
-        if files:
-            c = LocketClient(session_path=os.path.join(SESSIONS_DIR, files[0]))
-            sid = files[0].replace(".json", "")
-
-    if not c.is_authenticated():
-        return jsonify({"authenticated": False, "error": "No session found in sessions/", "sessions_dir_files": os.listdir(SESSIONS_DIR)})
-
-    uid = c.session.uid
-    token = c.session.get_valid_token()
-
-    user_res = c.post_api("fetchUserV2", {"user_uid": uid})
-    feed_res = c.post_api("getLatestMomentV2", {
-        "should_count_missed_moments": False,
-        "include_group_moments": True,
-        "excluded_users": []
-    })
-
-    return jsonify({
-        "authenticated": True,
-        "sid": sid,
-        "uid": uid,
-        "token_len": len(token) if token else 0,
-        "device_headers": c.device.default_headers,
-        "user_res": user_res,
-        "feed_res": feed_res
-    })

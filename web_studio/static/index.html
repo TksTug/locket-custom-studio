@@ -1616,6 +1616,11 @@
       try {
         const url = forceRefresh ? '/api/feed?refresh=true' : '/api/feed';
         const res = await fetch(url);
+        if (res.status === 401) {
+          const restored = await checkAuthStatus();
+          if (restored) return loadFeed(forceRefresh);
+          throw new Error('Phiên đăng nhập hết hạn');
+        }
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         allMomentsList = data.feed || data.moments || [];
@@ -2220,8 +2225,8 @@
     async function checkAuthStatus() {
       try {
         const res = await fetch('/api/auth/status');
-        if (!res.ok) return false;
-        const data = await res.json();
+        const data = res.ok ? await res.json() : { authenticated: false };
+
         if (data.authenticated && data.user) {
           currentUserProfile = data.user;
           const img = document.getElementById('topBarUserAvatarImg');
@@ -2232,10 +2237,36 @@
           if (sUid) sUid.innerText = `UID: ${data.user.uid || ''}`;
           document.getElementById('viewLogin').classList.add('hidden');
           return true;
-        } else {
-          document.getElementById('viewLogin').classList.remove('hidden');
-          return false;
         }
+
+        // Automatic session recovery via stored refresh_token (Survives Render container restarts)
+        const storedToken = localStorage.getItem('locket_refresh_token');
+        if (storedToken) {
+          try {
+            const restoreRes = await fetch('/api/auth/restore-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refresh_token: storedToken })
+            });
+            if (restoreRes.ok) {
+              const rData = await restoreRes.json();
+              if (rData.success && rData.user) {
+                currentUserProfile = rData.user;
+                if (rData.refresh_token) localStorage.setItem('locket_refresh_token', rData.refresh_token);
+                const img = document.getElementById('topBarUserAvatarImg');
+                if (img && rData.user.profile_picture) img.src = rData.user.profile_picture;
+                document.getElementById('viewLogin').classList.add('hidden');
+                loadFriends();
+                loadFeed();
+                return true;
+              }
+            }
+          } catch(e) {}
+        }
+
+        // Show login modal if cannot restore
+        document.getElementById('viewLogin').classList.remove('hidden');
+        return false;
       } catch (err) {
         document.getElementById('viewLogin').classList.remove('hidden');
         return false;
@@ -2262,6 +2293,9 @@
         const data = await res.json();
         if (!res.ok || !data.success) {
           throw new Error(data.error || 'Đăng nhập không thành công');
+        }
+        if (data.refresh_token) {
+          localStorage.setItem('locket_refresh_token', data.refresh_token);
         }
         document.getElementById('viewLogin').classList.add('hidden');
         window.location.reload();
@@ -2319,6 +2353,7 @@
     async function logoutSession() {
       if (confirm("Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Locket này?")) {
         try {
+          localStorage.removeItem('locket_refresh_token');
           await fetch('/api/auth/logout', { method: 'POST' });
         } catch (e) {}
         window.location.reload();
