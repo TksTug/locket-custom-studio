@@ -762,3 +762,35 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f">> Locket Custom Studio Web is running at: http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)
+
+@app.route("/api/test_locket", methods=["GET"])
+def test_locket():
+    c, sid = get_client_for_request()
+    if not c.is_authenticated():
+        files = [f for f in os.listdir(SESSIONS_DIR) if f.endswith(".json") and not f.startswith("friends_")]
+        if files:
+            c = LocketClient(session_path=os.path.join(SESSIONS_DIR, files[0]))
+            sid = files[0].replace(".json", "")
+
+    if not c.is_authenticated():
+        return jsonify({"authenticated": False, "error": "No session found in sessions/", "sessions_dir_files": os.listdir(SESSIONS_DIR)})
+
+    uid = c.session.uid
+    token = c.session.get_valid_token()
+
+    user_res = c.post_api("fetchUserV2", {"user_uid": uid})
+    feed_res = c.post_api("getLatestMomentV2", {
+        "should_count_missed_moments": False,
+        "include_group_moments": True,
+        "excluded_users": []
+    })
+
+    return jsonify({
+        "authenticated": True,
+        "sid": sid,
+        "uid": uid,
+        "token_len": len(token) if token else 0,
+        "device_headers": c.device.default_headers,
+        "user_res": user_res,
+        "feed_res": feed_res
+    })
