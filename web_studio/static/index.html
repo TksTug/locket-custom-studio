@@ -166,13 +166,19 @@
       scrollbar-width: none;
     }
 
-    /* REAL-TIME GOLD FILTERS */
+    /* REAL-TIME CURATED LUXURY GOLD FILTERS */
     .filter-none { filter: none; }
+    .filter-portra { filter: sepia(0.22) contrast(1.18) brightness(1.04) saturate(1.22); }
+    .filter-teal-orange { filter: contrast(1.22) saturate(1.35) hue-rotate(-15deg) brightness(1.02); }
+    .filter-korean { filter: brightness(1.12) contrast(0.96) saturate(1.2) hue-rotate(6deg); }
+    .filter-golden { filter: saturate(1.55) sepia(0.28) brightness(1.06) contrast(1.12); }
+    .filter-vintage { filter: sepia(0.48) contrast(1.12) brightness(0.92) saturate(0.85); }
+    .filter-cyberpunk { filter: contrast(1.3) hue-rotate(-30deg) saturate(1.75) brightness(1.06); }
+    .filter-noir { filter: grayscale(1) contrast(1.38) brightness(1.04); }
+    .filter-emerald { filter: hue-rotate(20deg) saturate(1.25) contrast(1.12) brightness(0.98); }
+    .filter-y2k { filter: saturate(1.8) contrast(1.18) brightness(1.08) hue-rotate(12deg); }
     .filter-lomo { filter: contrast(1.3) saturate(1.4) brightness(0.95); }
-    .filter-cyberpunk { filter: contrast(1.25) hue-rotate(-25deg) saturate(1.65) brightness(1.08); }
     .filter-film35mm { filter: sepia(0.22) contrast(1.15) brightness(1.02) saturate(1.15); }
-    .filter-vintage { filter: sepia(0.55) contrast(1.12) brightness(0.9) saturate(0.85); }
-    .filter-warmglow { filter: saturate(1.4) brightness(1.1) sepia(0.18) contrast(1.05); }
 
     /* Shutter flash animation */
     @keyframes shutterFlash {
@@ -386,6 +392,11 @@
           <video id="cameraPreviewVideo" autoplay loop muted playsinline class="w-full h-full object-cover hidden filter-none transition-all duration-300"></video>
 
           <!-- Top-Left Weather Radar Badge (Overlaid on photo) -->
+          <!-- Instagram-style Floating Swipe Filter Badge Overlay -->
+          <div id="swipeFilterBadge" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none px-4 py-2.5 rounded-full bg-black/80 backdrop-blur-lg border border-amber-400/40 text-amber-300 font-extrabold text-sm shadow-2xl flex items-center gap-2 transition-all duration-300 scale-90 opacity-0">
+            <span id="swipeFilterBadgeText">✨ Gốc</span>
+          </div>
+
           <div id="liveWeatherBadge" class="hidden absolute top-4 left-4 z-20 glass-pill px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-bold text-white shadow-xl border border-white/20 bg-black/60 backdrop-blur-md pointer-events-none">
             <span id="liveWeatherIcon">🌧️</span>
             <span id="liveWeatherTemp">33°C</span>
@@ -439,13 +450,23 @@
         </div>
 
         <!-- 3. REAL-TIME GOLD FILTER SELECTOR BAR (CHỈ HIỆN Ở MÀN HÌNH HẬU KỲ SAU KHI CHỤP XONG) -->
-        <div id="postCaptureFilterBar" class="hidden w-full max-w-[360px] flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-1">
-          <button onclick="applyGoldFilter('filter-none', 'Gốc')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-amber-400 border border-amber-400/40 shadow-sm active:scale-95">✨ Gốc</button>
-          <button onclick="applyGoldFilter('filter-lomo', 'LOMO')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎬 LOMO</button>
-          <button onclick="applyGoldFilter('filter-cyberpunk', 'Cyberpunk')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">⚡ Cyberpunk</button>
-          <button onclick="applyGoldFilter('filter-film35mm', 'Film 35mm')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎞️ Film 35mm</button>
-          <button onclick="applyGoldFilter('filter-vintage', 'Retro Vintage')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">📻 Retro</button>
-          <button onclick="applyGoldFilter('filter-warmglow', 'Warm Glow')" class="filter-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌅 Warm Glow</button>
+        <div id="postCaptureFilterBar" class="hidden w-full max-w-[360px] flex flex-col space-y-1 py-1 px-1">
+          <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 font-semibold">
+            <span>✨ Vuốt ảnh sang phải/trái để đổi bộ lọc</span>
+            <span id="activeFilterPill" class="text-amber-400 font-bold">✨ Gốc</span>
+          </div>
+          <div id="postCaptureFilterList" class="w-full flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+            <button onclick="applyGoldFilter('filter-none', '✨ Gốc')" data-filter="filter-none" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-amber-400 border border-amber-400/50 shadow-sm active:scale-95">✨ Gốc</button>
+            <button onclick="applyGoldFilter('filter-portra', '🎞️ Kodak Portra')" data-filter="filter-portra" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎞️ Portra</button>
+            <button onclick="applyGoldFilter('filter-teal-orange', '🎬 Teal & Orange')" data-filter="filter-teal-orange" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎬 Teal</button>
+            <button onclick="applyGoldFilter('filter-korean', '🌸 Korean Soft')" data-filter="filter-korean" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌸 Pastel</button>
+            <button onclick="applyGoldFilter('filter-golden', '🌅 Golden Hour')" data-filter="filter-golden" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌅 Golden</button>
+            <button onclick="applyGoldFilter('filter-vintage', '📻 Retro 1998')" data-filter="filter-vintage" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">📻 1998</button>
+            <button onclick="applyGoldFilter('filter-cyberpunk', '⚡ Cyberpunk')" data-filter="filter-cyberpunk" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">⚡ Cyber</button>
+            <button onclick="applyGoldFilter('filter-noir', '🖤 Film Noir')" data-filter="filter-noir" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🖤 Noir</button>
+            <button onclick="applyGoldFilter('filter-emerald', '🌲 Emerald')" data-filter="filter-emerald" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌲 Emerald</button>
+            <button onclick="applyGoldFilter('filter-y2k', '💖 Y2K Flash')" data-filter="filter-y2k" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">💖 Y2K</button>
+          </div>
         </div>
 
         <!-- POST-CAPTURE: Recipient Selection Matrix (SPEC I.2 & LOCKET GROUPS) -->
@@ -1163,17 +1184,48 @@
     // ==========================================
     // 3. REAL-TIME GOLD FILTERS
     // ==========================================
-    const GOLD_FILTERS = ['filter-none', 'filter-lomo', 'filter-cyberpunk', 'filter-film35mm', 'filter-vintage', 'filter-warmglow'];
+    const GOLD_FILTERS = [
+      'filter-none',
+      'filter-portra',
+      'filter-teal-orange',
+      'filter-korean',
+      'filter-golden',
+      'filter-vintage',
+      'filter-cyberpunk',
+      'filter-noir',
+      'filter-emerald',
+      'filter-y2k'
+    ];
+
     const FILTER_NAMES = {
-      'filter-none': 'Gốc',
-      'filter-lomo': 'LOMO',
-      'filter-cyberpunk': 'Cyberpunk',
-      'filter-film35mm': 'Film 35mm',
-      'filter-vintage': 'Retro Vintage',
-      'filter-warmglow': 'Warm Glow'
+      'filter-none': '✨ Gốc (Natural)',
+      'filter-portra': '🎞️ Kodak Portra 400',
+      'filter-teal-orange': '🎬 Cinematic Teal',
+      'filter-korean': '🌸 Korean Soft Pastel',
+      'filter-golden': '🌅 Golden Hour Glow',
+      'filter-vintage': '📻 Retro 1998 Analog',
+      'filter-cyberpunk': '⚡ Cyberpunk Neon',
+      'filter-noir': '🖤 Moody Film Noir',
+      'filter-emerald': '🌲 Emerald Forest',
+      'filter-y2k': '💖 Y2K Vivid Flash'
     };
 
-    function applyGoldFilter(filterClass, filterName) {
+    const FILTER_CSS_MAP = {
+      'filter-none': 'none',
+      'filter-portra': 'sepia(0.22) contrast(1.18) brightness(1.04) saturate(1.22)',
+      'filter-teal-orange': 'contrast(1.22) saturate(1.35) hue-rotate(-15deg) brightness(1.02)',
+      'filter-korean': 'brightness(1.12) contrast(0.96) saturate(1.2) hue-rotate(6deg)',
+      'filter-golden': 'saturate(1.55) sepia(0.28) brightness(1.06) contrast(1.12)',
+      'filter-vintage': 'sepia(0.48) contrast(1.12) brightness(0.92) saturate(0.85)',
+      'filter-cyberpunk': 'contrast(1.3) hue-rotate(-30deg) saturate(1.75) brightness(1.06)',
+      'filter-noir': 'grayscale(1) contrast(1.38) brightness(1.04)',
+      'filter-emerald': 'hue-rotate(20deg) saturate(1.25) contrast(1.12) brightness(0.98)',
+      'filter-y2k': 'saturate(1.8) contrast(1.18) brightness(1.08) hue-rotate(12deg)'
+    };
+
+    let swipeBadgeTimer = null;
+
+    function applyGoldFilter(filterClass, filterName, showToastOverlay = false) {
       activeFilterClass = filterClass;
       const liveVideo = document.getElementById('cameraLiveStream');
       const previewImg = document.getElementById('cameraPreviewImage');
@@ -1190,18 +1242,49 @@
       previewImg.classList.add(filterClass);
       previewVid.classList.add(filterClass);
 
-      pill.innerText = `Bộ lọc: ${filterName}`;
+      const name = filterName || FILTER_NAMES[filterClass] || 'Gốc';
+      if (pill) pill.innerText = name;
+
+      // Update active highlight in postCaptureFilterList buttons
+      document.querySelectorAll('.filter-pill-btn').forEach(btn => {
+        const isMatch = btn.getAttribute('data-filter') === filterClass;
+        if (isMatch) {
+          btn.className = "filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-amber-400 border border-amber-400/50 shadow-sm active:scale-95";
+        } else {
+          btn.className = "filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95";
+        }
+      });
+
+      // Show Instagram-style floating badge in center of photo
+      const badge = document.getElementById('swipeFilterBadge');
+      const badgeText = document.getElementById('swipeFilterBadgeText');
+      if (badge && badgeText) {
+        badgeText.innerText = name;
+        badge.classList.remove('hidden');
+        requestAnimationFrame(() => {
+          badge.classList.remove('scale-90', 'opacity-0');
+          badge.classList.add('scale-100', 'opacity-100');
+        });
+
+        if (swipeBadgeTimer) clearTimeout(swipeBadgeTimer);
+        swipeBadgeTimer = setTimeout(() => {
+          badge.classList.remove('scale-100', 'opacity-100');
+          badge.classList.add('scale-90', 'opacity-0');
+          setTimeout(() => badge.classList.add('hidden'), 300);
+        }, 900);
+      }
     }
 
-    function cycleFilterSwipe(direction) {
+    function cycleFilterSwipe(direction = 'next') {
       let idx = GOLD_FILTERS.indexOf(activeFilterClass);
+      if (idx === -1) idx = 0;
       if (direction === 'next') {
         idx = (idx + 1) % GOLD_FILTERS.length;
       } else {
         idx = (idx - 1 + GOLD_FILTERS.length) % GOLD_FILTERS.length;
       }
       const nextFilter = GOLD_FILTERS[idx];
-      applyGoldFilter(nextFilter, FILTER_NAMES[nextFilter]);
+      applyGoldFilter(nextFilter, FILTER_NAMES[nextFilter], true);
     }
 
     // ==========================================
@@ -1593,11 +1676,35 @@
       statusPill.innerText = "Đang nén & tải lên khoảnh khắc Locket Gold...";
       statusPill.classList.remove('hidden');
 
+      // Bake active filter into final image canvas before upload
+      let finalBlob = capturedBlob;
+      if (!isVideoMedia && activeFilterClass !== 'filter-none' && FILTER_CSS_MAP[activeFilterClass]) {
+        try {
+          finalBlob = await new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              const c = document.createElement('canvas');
+              c.width = img.width || 1080;
+              c.height = img.height || 1080;
+              const ctx = c.getContext('2d');
+              ctx.filter = FILTER_CSS_MAP[activeFilterClass] || 'none';
+              ctx.drawImage(img, 0, 0, c.width, c.height);
+              c.toBlob((b) => resolve(b || capturedBlob), 'image/jpeg', 0.94);
+            };
+            img.onerror = () => resolve(capturedBlob);
+            img.src = URL.createObjectURL(capturedBlob);
+          });
+        } catch (filterErr) {
+          console.warn('Could not bake filter:', filterErr);
+          finalBlob = capturedBlob;
+        }
+      }
+
       const formData = new FormData();
       if (isVideoMedia) {
         formData.append('video', capturedBlob, 'moment.mp4');
       } else {
-        formData.append('image', capturedBlob, 'moment.jpg');
+        formData.append('image', finalBlob, 'moment.jpg');
       }
       formData.append('file', capturedBlob, isVideoMedia ? 'moment.mp4' : 'moment.jpg');
       formData.append('caption', document.getElementById('cameraCaptionInput').value.trim());
@@ -2725,20 +2832,33 @@
         const absY = Math.abs(dy);
         const absX = Math.abs(dx);
 
-        // 1. Màn hình CAMERA: Vuốt tay chuyển cảnh hoặc đổi bộ lọc
-        if (activeTab === 'camera' && !isPostCaptureState) {
-          // Vuốt DỌC (Vuốt LÊN hoặc Vuốt XUỐNG trên camera) -> Mở Feed / Lịch sử khoảnh khắc
-          if (absY > absX && absY > 40) {
-            switchMainTab('feed');
+        // 1. Màn hình CAMERA:
+        if (activeTab === 'camera') {
+          // A. Khi ĐÃ CHỤP XONG (Màn hình hậu kỳ / Post-Capture): Vuốt TRÁI/PHẢI để đổi bộ lọc màu
+          if (isPostCaptureState) {
+            if (absX > absY && absX > 35) {
+              if (dx > 0) {
+                // Vuốt QUA PHẢI -> Đổi bộ lọc kế tiếp (hoặc trước đó)
+                cycleFilterSwipe('prev');
+              } else {
+                // Vuốt QUA TRÁI -> Đổi bộ lọc tiếp theo
+                cycleFilterSwipe('next');
+              }
+            }
           }
-          // Vuốt NGANG (Swipe Horizontal trên camera)
-          else if (absX > absY && absX > 45) {
-            if (dx < 0) {
-              // Vuốt SANG TRÁI -> Mở Tin nhắn / Chat
-              switchMainTab('chat');
-            } else {
-              // Vuốt SANG PHẢI -> Đổi bộ lọc thời gian thực
-              cycleFilterSwipe('next');
+          // B. Khi ĐANG NGẮM CAMERA (Chưa chụp):
+          else {
+            // Vuốt DỌC -> Mở Feed / Lịch sử khoảnh khắc
+            if (absY > absX && absY > 40) {
+              switchMainTab('feed');
+            }
+            // Vuốt NGANG
+            else if (absX > absY && absX > 45) {
+              if (dx < 0) {
+                switchMainTab('chat');
+              } else {
+                cycleFilterSwipe('next');
+              }
             }
           }
         }
@@ -2763,6 +2883,28 @@
         lastTapTime = now;
       });
     }
-  </script>
+  
+    // Desktop Mouse Drag to Swipe Filters in Post-Capture State
+    let isSquircleMouseDown = false;
+    let squircleStartX = 0;
+    const squircleBox = document.getElementById('cameraSquircle');
+    if (squircleBox) {
+      squircleBox.addEventListener('mousedown', (e) => {
+        if (!isPostCaptureState) return;
+        if (e.target.closest('button, input, select, textarea')) return;
+        isSquircleMouseDown = true;
+        squircleStartX = e.clientX;
+      });
+    }
+
+    window.addEventListener('mouseup', (e) => {
+      if (!isSquircleMouseDown || !isPostCaptureState) return;
+      isSquircleMouseDown = false;
+      const dx = e.clientX - squircleStartX;
+      if (Math.abs(dx) > 40) {
+        cycleFilterSwipe(dx > 0 ? 'prev' : 'next');
+      }
+    });
+</script>
 </body>
 </html>
