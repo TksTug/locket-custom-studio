@@ -168,6 +168,7 @@
 
     /* REAL-TIME CURATED LUXURY GOLD FILTERS */
     .filter-none { filter: none; }
+    .filter-banh-gao { filter: brightness(1.1) contrast(0.96) saturate(1.22) hue-rotate(5deg); }
     .filter-paris-ig { filter: brightness(1.08) contrast(0.96) saturate(1.15) hue-rotate(4deg); }
     .filter-camcorder { filter: sepia(0.35) contrast(1.15) brightness(0.95) saturate(1.1); }
     .filter-portra { filter: sepia(0.22) contrast(1.18) brightness(1.04) saturate(1.22); }
@@ -400,6 +401,9 @@
           </div>
 
           <!-- Authentic Real-Time VIP Frame Overlay -->
+          <!-- Authentic Real-Time Filter Effects (Sparkles / Bling / Grain) -->
+          <div id="activeFilterEffectOverlay" class="absolute inset-0 pointer-events-none z-20 transition-all duration-200"></div>
+
           <div id="activeFrameOverlay" class="absolute inset-0 pointer-events-none z-20 transition-all duration-200"></div>
 
           <div id="liveWeatherBadge" class="hidden absolute top-4 left-4 z-20 glass-pill px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-bold text-white shadow-xl border border-white/20 bg-black/60 backdrop-blur-md pointer-events-none">
@@ -463,6 +467,7 @@
           </div>
           <div id="postCaptureFilterList" class="w-full flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
             <button onclick="applyGoldFilter('filter-none', '✨ Gốc')" data-filter="filter-none" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-amber-400 border border-amber-400/50 shadow-sm active:scale-95">✨ Gốc</button>
+            <button onclick="applyGoldFilter('filter-banh-gao', '🍘 Bánh Gạo Bling')" data-filter="filter-banh-gao" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-amber-300 active:scale-95">🍘 Bánh Gạo</button>
             <button onclick="applyGoldFilter('filter-paris-ig', '🌸 Paris IG')" data-filter="filter-paris-ig" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🌸 Paris (IG)</button>
             <button onclick="applyGoldFilter('filter-portra', '🎞️ Kodak Portra')" data-filter="filter-portra" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">🎞️ Portra</button>
             <button onclick="applyGoldFilter('filter-camcorder', '📅 90s Cam TikTok')" data-filter="filter-camcorder" class="filter-pill-btn shrink-0 px-3 py-1 rounded-full text-[11px] font-bold glass-pill text-slate-300 active:scale-95">📅 90s Cam</button>
@@ -1194,6 +1199,7 @@
     // ==========================================
     const GOLD_FILTERS = [
       'filter-none',
+      'filter-banh-gao',
       'filter-paris-ig',
       'filter-portra',
       'filter-camcorder',
@@ -1209,6 +1215,7 @@
 
     const FILTER_NAMES = {
       'filter-none': '✨ Gốc (Natural)',
+      'filter-banh-gao': '🍘 Bánh Gạo (Bling Bling IG/TikTok)',
       'filter-paris-ig': '🌸 Instagram Paris (Mịn sáng)',
       'filter-portra': '🎞️ Kodak Portra 400 (Film IG)',
       'filter-camcorder': '📅 TikTok 90s Camcorder',
@@ -1224,6 +1231,7 @@
 
     const FILTER_CSS_MAP = {
       'filter-none': 'none',
+      'filter-banh-gao': 'brightness(1.1) contrast(0.96) saturate(1.22) hue-rotate(5deg)',
       'filter-paris-ig': 'brightness(1.08) contrast(0.96) saturate(1.15) hue-rotate(4deg)',
       'filter-portra': 'sepia(0.22) contrast(1.18) brightness(1.04) saturate(1.22)',
       'filter-camcorder': 'sepia(0.35) contrast(1.15) brightness(0.95) saturate(1.1)',
@@ -1256,6 +1264,7 @@
       previewImg.classList.add(filterClass);
       previewVid.classList.add(filterClass);
 
+      renderFilterEffectOverlay(filterClass);
       const name = filterName || FILTER_NAMES[filterClass] || 'Gốc';
       if (pill) pill.innerText = name;
 
@@ -1287,6 +1296,63 @@
           setTimeout(() => badge.classList.add('hidden'), 300);
         }, 900);
       }
+    }
+
+    
+    function renderFilterEffectOverlay(filterClass) {
+      const el = document.getElementById('activeFilterEffectOverlay');
+      if (!el) return;
+      if (filterClass === 'filter-banh-gao') {
+        const starCoords = [
+          [20, 22, 18], [35, 16, 22], [52, 20, 16], [68, 15, 24], [82, 26, 18],
+          [14, 42, 20], [28, 36, 26], [74, 40, 28], [86, 46, 18],
+          [22, 60, 22], [36, 54, 18], [64, 56, 24], [78, 64, 20],
+          [30, 76, 18], [50, 80, 26], [70, 74, 22], [18, 84, 16], [84, 80, 18]
+        ];
+        let svgStars = '';
+        for (const [x, y, s] of starCoords) {
+          svgStars += `
+            <svg class="absolute animate-pulse" style="top: ${y}%; left: ${x}%; width: ${s}px; height: ${s}px; transform: translate(-50%, -50%); animation-duration: ${1.2 + (x % 5)*0.2}s;" viewBox="0 0 24 24">
+              <path d="M12 0 Q12 12 24 12 Q12 12 12 24 Q12 12 0 12 Q12 12 12 0" fill="#FFFFFF" filter="drop-shadow(0 0 6px rgba(255,230,150,0.95))" />
+              <circle cx="12" cy="12" r="3" fill="#FFFDE8" />
+            </svg>
+          `;
+        }
+        el.innerHTML = svgStars;
+      } else {
+        el.innerHTML = '';
+      }
+    }
+
+    function drawBanhGaoSparkles(ctx, w, h) {
+      const points = [
+        [0.2, 0.22, 18], [0.35, 0.16, 22], [0.52, 0.20, 16], [0.68, 0.15, 24], [0.82, 0.26, 18],
+        [0.14, 0.42, 20], [0.28, 0.36, 26], [0.74, 0.40, 28], [0.86, 0.46, 18],
+        [0.22, 0.60, 22], [0.36, 0.54, 18], [0.64, 0.56, 24], [0.78, 0.64, 20],
+        [0.30, 0.76, 18], [0.50, 0.80, 26], [0.70, 0.74, 22], [0.18, 0.84, 16], [0.84, 0.80, 18]
+      ];
+      ctx.save();
+      for (const [rx, ry, size] of points) {
+        const cx = rx * w;
+        const cy = ry * h;
+        const s = (size / 720) * Math.min(w, h);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.shadowColor = 'rgba(255, 230, 150, 0.95)';
+        ctx.shadowBlur = s * 0.7;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - s);
+        ctx.quadraticCurveTo(cx, cy, cx + s, cy);
+        ctx.quadraticCurveTo(cx, cy, cx, cy + s);
+        ctx.quadraticCurveTo(cx, cy, cx - s, cy);
+        ctx.quadraticCurveTo(cx, cy, cx, cy - s);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, s * 0.25, 0, Math.PI * 2);
+        ctx.fillStyle = '#FFFDE8';
+        ctx.fill();
+      }
+      ctx.restore();
     }
 
     function cycleFilterSwipe(direction = 'next') {
@@ -1593,6 +1659,9 @@
       ctx.filter = 'none';
 
       // If Camcorder 90s filter, stamp digital date
+      if (activeFilterClass === 'filter-banh-gao') {
+        drawBanhGaoSparkles(ctx, canvas.width, canvas.height);
+      }
       if (activeFilterClass === 'filter-camcorder') {
         const d = new Date();
         const yr = String(d.getFullYear()).slice(-2);
@@ -1771,6 +1840,9 @@
               ctx.filter = FILTER_CSS_MAP[activeFilterClass] || 'none';
               ctx.drawImage(img, 0, 0, c.width, c.height);
               ctx.filter = 'none';
+              if (activeFilterClass === 'filter-banh-gao') {
+                drawBanhGaoSparkles(ctx, c.width, c.height);
+              }
 
               // Bake VIP Frame onto image if selected
               if (selectedFrame === 'polaroid') {
