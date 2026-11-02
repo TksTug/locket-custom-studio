@@ -829,3 +829,30 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f">> Locket Custom Studio Web is running at: http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)
+
+@app.route("/api/test-error", methods=["GET"])
+def test_error():
+    c, sid = get_client_for_request()
+    token = c.session.get_valid_token()
+    url = f"{c.API_BASE}/fetchUserV2"
+    headers = {
+        **c.device.default_headers,
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json; charset=utf-8"
+    }
+    body = {
+        "data": {
+            "user_uid": c.session.uid or "iUTytocIL8OrXMkdKmTY2pUho4P2",
+            "analytics": c.device.analytics_data
+        }
+    }
+    raw_data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=raw_data, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return jsonify({"status": resp.status, "body": json.loads(resp.read().decode("utf-8"))})
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode("utf-8", errors="replace")
+        return jsonify({"http_error": e.code, "headers": dict(e.headers), "body": body_text})
+    except Exception as e:
+        return jsonify({"exception": str(e)})
