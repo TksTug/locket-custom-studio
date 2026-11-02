@@ -1,3 +1,4 @@
+import os
 from __future__ import annotations
 
 import requests
@@ -15,7 +16,7 @@ class LocketClient:
     Provides complete programmatic access to all Locket Camera services
     with authentic iOS device fingerprint and hardware emulation.
     """
-    API_BASE = "https://api.locketcamera.com"
+    API_BASE = os.environ.get("LOCKET_API_PROXY", "https://api.locketcamera.com").rstrip("/")
 
     def __init__(
         self,

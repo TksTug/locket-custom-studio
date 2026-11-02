@@ -259,6 +259,19 @@ def get_user_friends(c, my_uid, force_refresh=False):
         except Exception:
             pass
 
+    # 3. Fallback to pre-cached friends catalog if available
+    legacy_file = os.path.join(os.path.dirname(__file__), "friends_cache.json")
+    if not force_refresh and os.path.exists(legacy_file):
+        try:
+            with open(legacy_file, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if len(d.get("friends", [])) > 0:
+                    user_fcache["timestamp"] = d.get("timestamp", now)
+                    user_fcache["friends"] = d["friends"]
+                    return user_fcache["friends"]
+        except Exception:
+            pass
+
     try:
         token = c.session.get_valid_token()
         url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/friends"
@@ -829,40 +842,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     print(f">> Locket Custom Studio Web is running at: http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)
-
-@app.route("/api/test-error", methods=["GET"])
-def test_error():
-    import subprocess
-    c, sid = get_client_for_request()
-    token = c.session.get_valid_token()
-    
-    # 1. Try curl
-    curl_cmd = [
-        "curl", "-s", "-i", "-X", "POST",
-        "https://api.locketcamera.com/fetchUserV2",
-        "-H", f"Authorization: Bearer {token}",
-        "-H", "Content-Type: application/json",
-        "-H", "User-Agent: com.locket.Locket/2.68.0 iPhone/17.5.1",
-        "-d", json.dumps({"data": {"user_uid": c.session.uid, "analytics": c.device.analytics_data}})
-    ]
-    try:
-        curl_out = subprocess.check_output(curl_cmd, stderr=subprocess.STDOUT, text=True, timeout=10)
-    except Exception as e:
-        curl_out = str(e)
-
-    # 2. Try requests
-    try:
-        r = requests.post(
-            "https://api.locketcamera.com/fetchUserV2",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "com.locket.Locket/2.68.0 iPhone/17.5.1"},
-            json={"data": {"user_uid": c.session.uid, "analytics": c.device.analytics_data}},
-            timeout=10
-        )
-        req_res = {"status": r.status_code, "text": r.text[:300]}
-    except Exception as e:
-        req_res = {"error": str(e)}
-
-    return jsonify({
-        "curl_output": curl_out[:500],
-        "requests_output": req_res
-    })
