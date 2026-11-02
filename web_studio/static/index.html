@@ -397,6 +397,9 @@
             <span id="swipeFilterBadgeText">✨ Gốc</span>
           </div>
 
+          <!-- Authentic Real-Time VIP Frame Overlay -->
+          <div id="activeFrameOverlay" class="absolute inset-0 pointer-events-none z-20 transition-all duration-200"></div>
+
           <div id="liveWeatherBadge" class="hidden absolute top-4 left-4 z-20 glass-pill px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-bold text-white shadow-xl border border-white/20 bg-black/60 backdrop-blur-md pointer-events-none">
             <span id="liveWeatherIcon">🌧️</span>
             <span id="liveWeatherTemp">33°C</span>
@@ -1478,23 +1481,49 @@
       initializeCamera();
     }
 
-    function cycleFlashMode(e) {
+    async function cycleFlashMode(e) {
       if (e) e.stopPropagation();
       const modes = ['off', 'on', 'auto'];
       const idx = (modes.indexOf(flashMode) + 1) % modes.length;
       flashMode = modes[idx];
       const icon = document.getElementById('flashIconSvg');
       const btn = document.getElementById('btnFlashToggle');
+
       if (flashMode === 'off') {
         if (btn) btn.className = "glass-pill w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-white active:scale-90 transition-all shadow-md z-30 cursor-pointer";
         if (icon) icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />';
+        await applyHardwareTorch(false);
+        showToast('Đèn Flash: Tắt', 'info');
       } else if (flashMode === 'on') {
         if (btn) btn.className = "bg-amber-400 text-black w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-all shadow-md z-30 cursor-pointer font-bold";
         if (icon) icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />';
+        // Try hardware torch if back camera
+        if (cameraFacing === 'environment') {
+          await applyHardwareTorch(true);
+        }
+        showToast(cameraFacing === 'user' ? 'Flash: Bật (Retina Screen Flash)' : 'Flash: Bật (Đèn LED Torch)', 'info');
       } else {
         if (btn) btn.className = "bg-white/20 text-amber-300 w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-all shadow-md z-30 cursor-pointer";
         if (icon) icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />';
+        await applyHardwareTorch(false);
+        showToast('Flash: Tự động (Auto)', 'info');
       }
+    }
+
+    async function applyHardwareTorch(enable) {
+      if (!cameraStream) return false;
+      const track = cameraStream.getVideoTracks()[0];
+      if (!track) return false;
+      try {
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.torch) {
+          await track.applyConstraints({ advanced: [{ torch: enable }] });
+          return true;
+        }
+      } catch (err) {
+        console.warn('Torch constraint not supported:', err);
+      }
+      return false;
     }
 
     // ==========================================
@@ -1509,23 +1538,38 @@
       }
     }
 
-    function capturePhotoFromCamera() {
+    async function capturePhotoFromCamera() {
       const video = document.getElementById('cameraLiveStream');
       const previewImg = document.getElementById('cameraPreviewImage');
       const flashOverlay = document.getElementById('flashOverlay');
 
-      // Trigger flash effect
-      flashOverlay.classList.remove('opacity-0');
-      flashOverlay.classList.add('flash-effect');
-      setTimeout(() => {
-        flashOverlay.classList.remove('flash-effect');
-        flashOverlay.classList.add('opacity-0');
-      }, 200);
+      // 1. Flash Handling: If Flash ON, illuminate with high brightness
+      const isFlashActive = (flashMode === 'on');
+      if (isFlashActive) {
+        // Front camera or non-torch: trigger full-screen warm-white retina flash
+        flashOverlay.style.backgroundColor = '#FFF8E7';
+        flashOverlay.style.opacity = '0.98';
+        flashOverlay.classList.remove('opacity-0');
+        // Back camera: ensure hardware torch is ON
+        if (cameraFacing === 'environment') {
+          await applyHardwareTorch(true);
+        }
+        // Wait 220ms for sensor exposure to adjust
+        await new Promise(r => setTimeout(r, 220));
+      } else {
+        // Quick shutter animation
+        flashOverlay.classList.remove('opacity-0');
+        flashOverlay.classList.add('flash-effect');
+        setTimeout(() => {
+          flashOverlay.classList.remove('flash-effect');
+          flashOverlay.classList.add('opacity-0');
+        }, 150);
+      }
 
-      // Draw freeze frame
+      // 2. Draw freeze frame onto canvas
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 720;
-      canvas.height = video.videoHeight || 720;
+      canvas.width = video.videoWidth || 1080;
+      canvas.height = video.videoHeight || 1080;
       const ctx = canvas.getContext('2d');
       if (isCameraMirrored) {
         ctx.translate(canvas.width, 0);
@@ -1533,12 +1577,19 @@
       }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+      // Turn off flash overlay & torch
+      if (isFlashActive) {
+        flashOverlay.style.opacity = '0';
+        flashOverlay.classList.add('opacity-0');
+        await applyHardwareTorch(false);
+      }
+
       canvas.toBlob((blob) => {
         capturedBlob = blob;
         isVideoMedia = false;
         previewImg.src = URL.createObjectURL(blob);
         enterPostCaptureState();
-      }, 'image/jpeg', 0.92);
+      }, 'image/jpeg', 0.94);
     }
 
     function triggerGalleryPicker() {
@@ -1689,6 +1740,42 @@
               const ctx = c.getContext('2d');
               ctx.filter = FILTER_CSS_MAP[activeFilterClass] || 'none';
               ctx.drawImage(img, 0, 0, c.width, c.height);
+              ctx.filter = 'none';
+
+              // Bake VIP Frame onto image if selected
+              if (selectedFrame === 'polaroid') {
+                const bW = Math.round(c.width * 0.035);
+                const bBottom = Math.round(c.height * 0.14);
+                ctx.fillStyle = '#FFFFFF';
+                // Top, Left, Right
+                ctx.fillRect(0, 0, c.width, bW);
+                ctx.fillRect(0, 0, bW, c.height);
+                ctx.fillRect(c.width - bW, 0, bW, c.height);
+                // Bottom
+                ctx.fillRect(0, c.height - bBottom, c.width, bBottom);
+                // Text
+                ctx.fillStyle = '#222222';
+                ctx.font = `bold ${Math.round(c.height * 0.03)}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.fillText('Locket Moment ✨', c.width / 2, c.height - Math.round(bBottom * 0.35));
+              } else if (selectedFrame === 'cinema') {
+                const barH = Math.round(c.height * 0.1);
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, c.width, barH);
+                ctx.fillRect(0, c.height - barH, c.width, barH);
+                ctx.fillStyle = '#ef4444';
+                ctx.font = `bold ${Math.round(c.height * 0.024)}px monospace`;
+                ctx.textAlign = 'left';
+                ctx.fillText('REC ● 2.39:1', Math.round(c.width * 0.04), Math.round(barH * 0.65));
+                ctx.fillStyle = '#f59e0b';
+                ctx.textAlign = 'right';
+                ctx.fillText('4K 24FPS', c.width - Math.round(c.width * 0.04), Math.round(barH * 0.65));
+              } else if (selectedFrame === 'heart-neon') {
+                ctx.strokeStyle = 'rgba(236, 72, 153, 0.9)';
+                ctx.lineWidth = Math.round(c.width * 0.015);
+                ctx.strokeRect(10, 10, c.width - 20, c.height - 20);
+              }
+
               c.toBlob((b) => resolve(b || capturedBlob), 'image/jpeg', 0.94);
             };
             img.onerror = () => resolve(capturedBlob);
@@ -2751,22 +2838,74 @@
       }
     }
 
+    const VIP_FRAMES = ['none', 'polaroid', 'cinema', 'kodak-film', 'heart-neon'];
+    const FRAME_NAMES = {
+      'none': 'Không khung',
+      'polaroid': '📸 Polaroid Cổ Điển',
+      'cinema': '🎬 Điện Ảnh 2.39:1 (4K)',
+      'kodak-film': '🎞️ Cuộn Film 35mm',
+      'heart-neon': '💖 Neon Heart Y2K'
+    };
+
     function cycleFrameType(e) {
       if (e) e.stopPropagation();
-      const frames = ['none', 'polaroid', 'cinema'];
-      const idx = (frames.indexOf(selectedFrame) + 1) % frames.length;
-      selectedFrame = frames[idx];
+      const idx = (VIP_FRAMES.indexOf(selectedFrame) + 1) % VIP_FRAMES.length;
+      selectedFrame = VIP_FRAMES[idx];
       const btn = document.getElementById('btnFrameCycle');
       if (selectedFrame !== 'none') {
         if (btn) btn.className = "bg-amber-400 text-black w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-all shadow-md z-30 cursor-pointer font-bold";
       } else {
         if (btn) btn.className = "glass-pill w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-white active:scale-90 transition-all shadow-md z-30 cursor-pointer";
       }
-      const statusPill = document.getElementById('cameraStatusPill');
-      if (statusPill) {
-        statusPill.innerText = `Khung ảnh VIP: ${selectedFrame.toUpperCase()}`;
-        statusPill.classList.remove('hidden');
-        setTimeout(() => { if (!isPostCaptureState) statusPill.classList.add('hidden'); }, 1500);
+      renderActiveFrameOverlay();
+      showToast(`Khung: ${FRAME_NAMES[selectedFrame]}`, 'info');
+    }
+
+    function renderActiveFrameOverlay() {
+      const el = document.getElementById('activeFrameOverlay');
+      if (!el) return;
+      if (selectedFrame === 'polaroid') {
+        el.innerHTML = `
+          <div class="w-full h-full border-[12px] border-b-[48px] border-white shadow-2xl rounded-[38px] flex flex-col justify-end items-center pb-2 pointer-events-none">
+            <span class="text-[11px] font-sans font-bold text-slate-800 tracking-wider">Locket Moment ✨</span>
+          </div>
+        `;
+      } else if (selectedFrame === 'cinema') {
+        el.innerHTML = `
+          <div class="w-full h-full flex flex-col justify-between pointer-events-none rounded-[38px] overflow-hidden border border-white/10">
+            <div class="h-8 bg-black/95 w-full flex items-center justify-between px-3 text-[10px] text-white font-mono tracking-widest border-b border-white/15">
+              <span class="flex items-center gap-1.5 text-rose-500 font-bold"><span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>REC ●</span>
+              <span class="text-slate-400">2.39:1 CINEMA</span>
+            </div>
+            <div class="h-8 bg-black/95 w-full flex items-center justify-between px-3 text-[10px] text-white font-mono tracking-widest border-t border-white/15">
+              <span class="text-amber-400 font-semibold">4K 24FPS</span>
+              <span class="text-slate-400">SHUTTER 1/48</span>
+            </div>
+          </div>
+        `;
+      } else if (selectedFrame === 'kodak-film') {
+        const dots = Array(7).fill('<span class="w-2 h-3 bg-black border border-white/40 rounded-sm"></span>').join('');
+        el.innerHTML = `
+          <div class="w-full h-full flex justify-between pointer-events-none rounded-[38px] overflow-hidden border-y-2 border-black/80">
+            <div class="w-5 h-full bg-black/90 flex flex-col justify-around items-center py-2 border-r border-white/20">
+              ${dots}
+            </div>
+            <div class="w-5 h-full bg-black/90 flex flex-col justify-around items-center py-2 border-l border-white/20">
+              ${dots}
+            </div>
+          </div>
+        `;
+      } else if (selectedFrame === 'heart-neon') {
+        el.innerHTML = `
+          <div class="w-full h-full border-[3px] border-pink-500/80 rounded-[38px] shadow-[inset_0_0_20px_rgba(236,72,153,0.5)] flex items-center justify-center pointer-events-none">
+            <span class="absolute top-3 left-3 text-sm">💖</span>
+            <span class="absolute top-3 right-3 text-sm">💖</span>
+            <span class="absolute bottom-3 left-3 text-sm">💖</span>
+            <span class="absolute bottom-3 right-3 text-sm">💖</span>
+          </div>
+        `;
+      } else {
+        el.innerHTML = '';
       }
     }
 
