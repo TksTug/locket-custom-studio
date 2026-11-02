@@ -832,27 +832,37 @@ if __name__ == "__main__":
 
 @app.route("/api/test-error", methods=["GET"])
 def test_error():
+    import subprocess
     c, sid = get_client_for_request()
     token = c.session.get_valid_token()
-    url = f"{c.API_BASE}/fetchUserV2"
-    headers = {
-        **c.device.default_headers,
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=utf-8"
-    }
-    body = {
-        "data": {
-            "user_uid": c.session.uid or "iUTytocIL8OrXMkdKmTY2pUho4P2",
-            "analytics": c.device.analytics_data
-        }
-    }
-    raw_data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(url, data=raw_data, headers=headers)
+    
+    # 1. Try curl
+    curl_cmd = [
+        "curl", "-s", "-i", "-X", "POST",
+        "https://api.locketcamera.com/fetchUserV2",
+        "-H", f"Authorization: Bearer {token}",
+        "-H", "Content-Type: application/json",
+        "-H", "User-Agent: com.locket.Locket/2.68.0 iPhone/17.5.1",
+        "-d", json.dumps({"data": {"user_uid": c.session.uid, "analytics": c.device.analytics_data}})
+    ]
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return jsonify({"status": resp.status, "body": json.loads(resp.read().decode("utf-8"))})
-    except urllib.error.HTTPError as e:
-        body_text = e.read().decode("utf-8", errors="replace")
-        return jsonify({"http_error": e.code, "headers": dict(e.headers), "body": body_text})
+        curl_out = subprocess.check_output(curl_cmd, stderr=subprocess.STDOUT, text=True, timeout=10)
     except Exception as e:
-        return jsonify({"exception": str(e)})
+        curl_out = str(e)
+
+    # 2. Try requests
+    try:
+        r = requests.post(
+            "https://api.locketcamera.com/fetchUserV2",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "com.locket.Locket/2.68.0 iPhone/17.5.1"},
+            json={"data": {"user_uid": c.session.uid, "analytics": c.device.analytics_data}},
+            timeout=10
+        )
+        req_res = {"status": r.status_code, "text": r.text[:300]}
+    except Exception as e:
+        req_res = {"error": str(e)}
+
+    return jsonify({
+        "curl_output": curl_out[:500],
+        "requests_output": req_res
+    })
