@@ -207,36 +207,31 @@ def auth_logout():
 
 from concurrent.futures import ThreadPoolExecutor
 
-FRIENDS_CACHE_FILE = os.path.join(os.path.dirname(__file__), "friends_cache.json")
-FRIENDS_CACHE = {"timestamp": 0, "friends": []}
-if os.path.exists(FRIENDS_CACHE_FILE):
-    try:
-        with open(FRIENDS_CACHE_FILE, "r", encoding="utf-8") as f:
-            FRIENDS_CACHE = json.load(f)
-    except Exception:
-        pass
-
-@app.route("/api/friends", methods=["GET"])
-def list_friends():
-    c, sid = get_client_for_request()
-    if not c.is_authenticated():
-        return jsonify({"friends": []})
-
+def get_user_friends(c, my_uid, force_refresh=False):
     now = time.time()
-    uid = c.session.uid or "anonymous"
-    user_fcache = USER_FRIENDS_CACHE.setdefault(uid, {"timestamp": 0, "friends": []})
-    if now - user_fcache["timestamp"] < 600 and len(user_fcache["friends"]) > 0:
-        return jsonify({"friends": user_fcache["friends"]})
+    user_fcache = USER_FRIENDS_CACHE.setdefault(my_uid, {"timestamp": 0, "friends": []})
+    
+    # 1. In-memory worker cache
+    if not force_refresh and (now - user_fcache.get("timestamp", 0) < 600) and len(user_fcache.get("friends", [])) > 0:
+        return user_fcache["friends"]
+        
+    # 2. Shared disk cache across Gunicorn workers
+    disk_file = os.path.join(SESSIONS_DIR, f"friends_{my_uid}.json")
+    if not force_refresh and os.path.exists(disk_file):
+        try:
+            with open(disk_file, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if now - d.get("timestamp", 0) < 600 and len(d.get("friends", [])) > 0:
+                    user_fcache["timestamp"] = d["timestamp"]
+                    user_fcache["friends"] = d["friends"]
+                    return user_fcache["friends"]
+        except Exception:
+            pass
 
     try:
         token = c.session.get_valid_token()
-        my_uid = c.session.uid
         url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/friends"
-        headers = {
-            **c.device.default_headers,
-            "Authorization": f"Bearer {token}"
-        }
-
+        headers = {**c.device.default_headers, "Authorization": f"Bearer {token}"}
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -247,26 +242,44 @@ def list_friends():
         def fetch_single_profile(fuid):
             try:
                 p = c.user.get_profile(fuid)
+                fn = (p.get("first_name") or "").strip()
+                ln = (p.get("last_name") or "").strip()
+                un = (p.get("username") or "").strip()
                 return {
                     "uid": fuid,
-                    "first_name": p.get("first_name", ""),
-                    "last_name": p.get("last_name", ""),
-                    "username": p.get("username", ""),
+                    "first_name": fn or un or f"Bạn bè ({fuid[:4]})",
+                    "last_name": ln,
+                    "username": un or fuid[:8],
                     "profile_picture": p.get("profile_picture_url")
                 }
             except Exception:
                 pass
-            return {"uid": fuid, "first_name": "Bạn Locket", "username": fuid[:8]}
+            return {"uid": fuid, "first_name": f"Bạn bè ({fuid[:4]})", "username": fuid[:8]}
 
         with ThreadPoolExecutor(max_workers=8) as executor:
             friends = list(executor.map(fetch_single_profile, uids))
 
         user_fcache["timestamp"] = now
         user_fcache["friends"] = friends
-        return jsonify({"friends": friends})
+        try:
+            with open(disk_file, "w", encoding="utf-8") as f:
+                json.dump({"timestamp": now, "friends": friends}, f, ensure_ascii=False)
+        except Exception:
+            pass
+        return friends
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"friends": user_fcache.get("friends", []), "error": str(e)})
+        return user_fcache.get("friends", [])
+
+@app.route("/api/friends", methods=["GET"])
+def list_friends():
+    c, sid = get_client_for_request()
+    if not c.is_authenticated():
+        return jsonify({"friends": []})
+    my_uid = c.session.uid or "anonymous"
+    refresh = request.args.get("refresh") == "true"
+    friends = get_user_friends(c, my_uid, force_refresh=refresh)
+    return jsonify({"friends": friends})
 
 # ==========================================
 # FEED (XEM BẠN BÈ ĐĂNG GÌ - KHOẢNH KHẮC THẬT)
@@ -309,40 +322,7 @@ def get_feed():
         return jsonify({"feed": cached_feed, "moments": cached_feed})
 
     # 1. Ensure friends list is available (cached for 10 min)
-    friends = user_fcache.get("friends", [])
-    if not friends or (now - user_fcache.get("timestamp", 0) > 600):
-        try:
-            token = c.session.get_valid_token()
-            url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/friends"
-            headers = {**c.device.default_headers, "Authorization": f"Bearer {token}"}
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-
-            doc_items = data.get("documents", [])
-            uids = [doc["name"].split("/")[-1] for doc in doc_items]
-
-            def fetch_single_profile(fuid):
-                try:
-                    p = c.user.get_profile(fuid)
-                    return {
-                        "uid": fuid,
-                        "first_name": p.get("first_name", ""),
-                        "last_name": p.get("last_name", ""),
-                        "username": p.get("username", ""),
-                        "profile_picture": p.get("profile_picture_url")
-                    }
-                except Exception:
-                    pass
-                return {"uid": fuid, "first_name": "Bạn Locket", "username": fuid[:8]}
-
-            with ThreadPoolExecutor(max_workers=8) as executor:
-                friends = list(executor.map(fetch_single_profile, uids))
-            user_fcache["timestamp"] = now
-            user_fcache["friends"] = friends
-        except Exception as e:
-            traceback.print_exc()
-            friends = user_fcache.get("friends", [])
+    friends = get_user_friends(c, my_uid, force_refresh=refresh)
 
     friend_map = {f["uid"]: f for f in friends if "uid" in f}
     friend_uids = [f["uid"] for f in friends if "uid" in f]
@@ -363,7 +343,7 @@ def get_feed():
             return my_info
         if uid in friend_map:
             return friend_map[uid]
-        return {"uid": uid, "first_name": "Bạn Locket", "username": uid[:8]}
+        return {"uid": uid, "first_name": f"Bạn bè ({uid[:4]})", "username": uid[:8]}
 
     # Filter by specific friend
     if user_uid:

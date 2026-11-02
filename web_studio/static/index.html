@@ -191,9 +191,32 @@
     }
     .floating-reaction {
       position: absolute;
-      animation: floatUpFade 0.85s ease-out forwards;
+      animation: floatUpFade 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
       pointer-events: none;
-      z-index: 60;
+      z-index: 70;
+      user-select: none;
+    }
+
+    @keyframes heartBurst {
+      0% { transform: scale(0.2) rotate(-12deg); opacity: 0; }
+      45% { transform: scale(1.35) rotate(4deg); opacity: 1; filter: drop-shadow(0 0 25px rgba(239, 68, 68, 0.85)); }
+      75% { transform: scale(1.1) rotate(0deg); opacity: 1; }
+      100% { transform: scale(1.4) translateY(-30px); opacity: 0; }
+    }
+    .animate-heart-burst {
+      animation: heartBurst 0.75s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    @keyframes skeletonPulse {
+      0%, 100% { opacity: 0.45; }
+      50% { opacity: 0.9; }
+    }
+    .skeleton-box {
+      background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.06) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.8s infinite linear, skeletonPulse 1.8s infinite ease-in-out;
     }
 
     /* Shimmer gradient */
@@ -211,6 +234,12 @@
   </style>
 </head>
 <body id="appBody" class="theme-gold flex flex-col justify-between max-w-md mx-auto h-full relative select-none">
+
+  <!-- Universal iOS-Style Floating Toast Pill -->
+  <div id="toastNotification" class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-[90vw] pointer-events-none transition-all duration-300 transform -translate-y-16 opacity-0 flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-2xl border font-bold text-xs">
+    <span id="toastIcon" class="text-sm">✨</span>
+    <span id="toastMessage" class="text-white">Thông báo</span>
+  </div>
 
   <!-- Fullscreen Camera Flash Overlay -->
   <div id="flashOverlay" class="fixed inset-0 bg-white pointer-events-none z-50 opacity-0"></div>
@@ -306,7 +335,7 @@
   <!-- ======================================================== -->
   <!-- TOP BAR (LOCKET CLEAN & MINIMAL) -->
   <!-- ======================================================== -->
-  <header id="appTopBar" class="flex items-center justify-between px-4 pt-3 pb-2 z-30 w-full shrink-0">
+  <header id="appTopBar" class="flex items-center justify-between px-4 pt-3 pb-2 z-30 w-full shrink-0" style="padding-top: max(0.75rem, env(safe-area-inset-top, 0px));">
     <!-- Left: User Profile Picture (Click opens Settings ⚙️) -->
     <button onclick="openSettingsModal()" class="relative w-10 h-10 rounded-full p-0.5 ring-2 ring-amber-400/50 hover:ring-amber-400 overflow-hidden active:scale-90 transition-all shadow-lg flex items-center justify-center bg-slate-800" title="Cài đặt & Tài khoản">
       <img id="topBarUserAvatarImg" src="/icon-192.png" class="w-full h-full rounded-full object-cover" alt="Profile">
@@ -482,7 +511,7 @@
     <!-- ======================================================== -->
     <!-- 2. TAB KHOẢNH KHẮC / FEED (TAB 2 - CLEAN & MINIMAL) -->
     <!-- ======================================================== -->
-    <section id="viewFeed" class="hidden absolute inset-0 overflow-y-auto custom-scroll pb-32 flex flex-col items-center" style="scroll-behavior: smooth; -webkit-overflow-scrolling: touch !important; touch-action: pan-y !important; overscroll-behavior-y: contain;">
+    <section id="viewFeed" class="hidden absolute inset-0 overflow-y-auto custom-scroll flex flex-col items-center" style="padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important; scroll-behavior: smooth; -webkit-overflow-scrolling: touch !important; touch-action: pan-y !important; overscroll-behavior-y: contain;">
       <!-- Friends Filter Chips Row -->
       <div class="px-4 py-2 shrink-0 border-b border-white/10 sticky top-0 bg-[#141419]/90 backdrop-blur-md z-20 w-full">
         <div id="feedFriendsFilterRow" class="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1" style="touch-action: pan-x; -webkit-overflow-scrolling: touch;">
@@ -577,7 +606,7 @@
   <!-- ======================================================== -->
   <!-- FLOATING BOTTOM DOCK (GIAO DIỆN MỚI LOCKET) -->
   <!-- ======================================================== -->
-  <nav id="floatingBottomDock" class="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-7 px-6 py-2.5 rounded-full glass-dock shadow-2xl">
+  <nav id="floatingBottomDock" class="fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-7 px-6 py-2.5 rounded-full glass-dock shadow-2xl" style="bottom: max(1.15rem, calc(0.5rem + env(safe-area-inset-bottom, 0px)));">
     <!-- 1. Grid / Khoảnh khắc (Feed Gallery) -->
     <button onclick="switchMainTab('feed')" id="dockTabFeed" class="p-2 text-slate-400 hover:text-white transition-all active:scale-90 rounded-full" title="Khoảnh khắc">
       <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -933,6 +962,137 @@
     });
 
     // ==========================================
+    
+    // ==========================================
+    // 0. WEB AUDIO HAPTICS & SOUND ENGINE
+    // ==========================================
+    let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playShutterSound() {
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(140, now + 0.08);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1100, now + 0.05);
+        osc2.frequency.exponentialRampToValueAtTime(200, now + 0.14);
+        gain2.gain.setValueAtTime(0.3, now + 0.05);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.05);
+        osc2.stop(now + 0.16);
+      } catch(e) {}
+    }
+
+    function playPopSound() {
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(420, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+      } catch(e) {}
+    }
+
+    function playChimeSound() {
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        [523.25, 659.25, 783.99].forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+          gain.gain.setValueAtTime(0.2, now + idx * 0.07);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.22);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + idx * 0.07);
+          osc.stop(now + idx * 0.07 + 0.25);
+        });
+      } catch(e) {}
+    }
+
+    // ==========================================
+    // FLOATING TOAST SYSTEM (Replaces Native alert)
+    // ==========================================
+    let toastTimer = null;
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toastNotification');
+      const icon = document.getElementById('toastIcon');
+      const msg = document.getElementById('toastMessage');
+      if (!toast || !msg) return;
+
+      if (type === 'success') {
+        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-[90vw] pointer-events-none transition-all duration-300 transform translate-y-0 opacity-100 flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-2xl border font-bold text-xs bg-emerald-950/85 border-emerald-500/40 text-emerald-300 shadow-emerald-500/20';
+        icon.innerText = '✓';
+        playPopSound();
+      } else if (type === 'warning') {
+        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-[90vw] pointer-events-none transition-all duration-300 transform translate-y-0 opacity-100 flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-2xl border font-bold text-xs bg-amber-950/85 border-amber-500/40 text-amber-300 shadow-amber-500/20';
+        icon.innerText = '⚠️';
+      } else if (type === 'error') {
+        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-[90vw] pointer-events-none transition-all duration-300 transform translate-y-0 opacity-100 flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-2xl border font-bold text-xs bg-rose-950/85 border-rose-500/40 text-rose-300 shadow-rose-500/20';
+        icon.innerText = '✕';
+      } else {
+        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-[90vw] pointer-events-none transition-all duration-300 transform translate-y-0 opacity-100 flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-2xl border font-bold text-xs bg-slate-900/90 border-white/20 text-white shadow-black/40';
+        icon.innerText = '✨';
+      }
+      msg.innerText = message;
+
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('-translate-y-16', 'opacity-0');
+      }, 2600);
+    }
+
+    function renderFeedSkeleton() {
+      return [1, 2].map(() => `
+        <div class="w-full max-w-[340px] flex flex-col space-y-3 pb-6 border-b border-white/5">
+          <div class="flex items-center gap-2.5 px-1">
+            <div class="w-8 h-8 rounded-full skeleton-box shrink-0"></div>
+            <div class="flex flex-col space-y-1.5 flex-1">
+              <div class="w-28 h-3 rounded skeleton-box"></div>
+              <div class="w-16 h-2 rounded skeleton-box"></div>
+            </div>
+          </div>
+          <div class="locket-squircle relative mx-auto skeleton-box shadow-2xl"></div>
+          <div class="w-full h-10 rounded-full skeleton-box"></div>
+        </div>
+      `).join('');
+    }
+
     // 1. THEMES & CUSTOM APP ICONS
     // ==========================================
     function setAppTheme(themeName) {
@@ -942,7 +1102,7 @@
     }
 
     function setCustomAppIcon(iconKey) {
-      alert(`Đã áp dụng biểu tượng Locket Gold [${iconKey.toUpperCase()}] thành công!`);
+      showToast(`Đã đổi biểu tượng Locket [${iconKey.toUpperCase()}]`, 'success');
     }
 
     // ==========================================
@@ -1132,7 +1292,7 @@
       const name = document.getElementById('newGroupName').value.trim();
       const emoji = document.getElementById('newGroupEmoji').value.trim() || '✨';
       if (!name) {
-        alert("Vui lòng nhập tên nhóm!");
+        showToast("Vui lòng nhập tên nhóm!", "warning");
         return;
       }
       const checkedBoxes = document.querySelectorAll('.group-friend-checkbox:checked');
@@ -1150,7 +1310,7 @@
       closeCreateGroupModal();
       openFriendsModal();
       selectActiveGroup(newGroup.id);
-      alert(`Đã tạo nhóm "${name}" thành công!`);
+      showToast(`Đã tạo nhóm "${name}" thành công!`, "success"); playChimeSound();
     }
 
     function renderGroupsList() {
@@ -1226,6 +1386,7 @@
     // 7. CAPTURE & POST-CAPTURE WORKFLOW
     // ==========================================
     function handleShutterClick() {
+      playShutterSound();
       if (isPostCaptureState) {
         uploadAndSendMoment();
       } else {
@@ -1388,11 +1549,11 @@
     // ==========================================
     async function uploadAndSendMoment() {
       if (!capturedBlob) {
-        alert("Vui lòng chụp ảnh hoặc chọn ảnh từ Album!");
+        showToast("Vui lòng chụp ảnh hoặc chọn từ Album!", "warning");
         return;
       }
       if (selectedRecipients.size === 0) {
-        alert("Vui lòng chọn ít nhất 1 người bạn để gửi!");
+        showToast("Vui lòng chọn ít nhất 1 người bạn để gửi!", "warning");
         return;
       }
 
@@ -1450,7 +1611,7 @@
     async function loadFeed(forceRefresh = false) {
       const container = document.getElementById('feedMomentsList');
       if (allMomentsList.length === 0 || forceRefresh) {
-        container.innerHTML = '<div class="text-xs text-slate-400 py-16 text-center flex flex-col items-center gap-3"><div class="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div><span>Đang tải khoảnh khắc bạn bè...</span></div>';
+        container.innerHTML = renderFeedSkeleton();
       }
       try {
         const url = forceRefresh ? '/api/feed?refresh=true' : '/api/feed';
@@ -1472,19 +1633,45 @@
       }
     }
 
+    const AVATAR_GRADIENTS = [
+      'from-amber-400 to-yellow-600',
+      'from-pink-500 to-rose-600',
+      'from-indigo-500 to-purple-600',
+      'from-emerald-400 to-teal-600',
+      'from-sky-400 to-blue-600',
+      'from-orange-400 to-red-500'
+    ];
+
+    function getGradientForUid(uid) {
+      if (!uid) return AVATAR_GRADIENTS[0];
+      let hash = 0;
+      for (let i = 0; i < uid.length; i++) hash = (hash + uid.charCodeAt(i)) % AVATAR_GRADIENTS.length;
+      return AVATAR_GRADIENTS[hash];
+    }
+
     function renderFeedFilterChips() {
       const row = document.getElementById('feedFriendsFilterRow');
       let html = `
-        <button onclick="filterFeedByFriend(null)" class="px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 ${activeFeedFilterUid === null ? 'bg-amber-400 text-black shadow-md' : 'glass-pill text-slate-300'}">
+        <!-- Quick Refresh Button -->
+        <button onclick="loadFeed(true)" class="w-7 h-7 rounded-full glass-pill flex items-center justify-center text-slate-300 hover:text-amber-400 active:scale-90 transition-all shrink-0" title="Làm mới feed">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+        <button onclick="filterFeedByFriend(null)" class="px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 ${activeFeedFilterUid === null ? 'bg-amber-400 text-black shadow-md shadow-amber-400/25 ring-2 ring-amber-400/40' : 'glass-pill text-slate-300 hover:text-white'}">
           Tất cả (${allMomentsList.length})
         </button>
       `;
       allFriendsList.forEach(f => {
         const active = activeFeedFilterUid === f.uid;
+        const grad = getGradientForUid(f.uid);
+        const displayName = f.first_name || f.username || 'Bạn';
+        const initial = displayName.trim().charAt(0).toUpperCase() || 'B';
         html += `
-          <button onclick="filterFeedByFriend('${f.uid}')" class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 ${active ? 'bg-amber-400 text-black shadow-md' : 'glass-pill text-slate-300'}">
-            ${f.profile_picture ? `<img src="${f.profile_picture}" class="w-4 h-4 rounded-full object-cover">` : ''}
-            <span>${f.first_name || f.username}</span>
+          <button onclick="filterFeedByFriend('${f.uid}')" class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 ${active ? 'bg-amber-400 text-black shadow-md shadow-amber-400/25 ring-2 ring-amber-400/40' : 'glass-pill text-slate-300 hover:text-white'}">
+            ${f.profile_picture ? 
+              `<img src="${f.profile_picture}" class="w-4 h-4 rounded-full object-cover ring-1 ring-white/30">` : 
+              `<span class="w-4 h-4 rounded-full bg-gradient-to-tr ${grad} text-[9px] font-extrabold text-white flex items-center justify-center shadow-sm">${initial}</span>`
+            }
+            <span>${displayName}</span>
           </button>
         `;
       });
@@ -1496,7 +1683,7 @@
       renderFeedFilterChips();
 
       const container = document.getElementById('feedMomentsList');
-      container.innerHTML = '<div class="text-xs text-slate-400 py-16 text-center flex flex-col items-center gap-3"><div class="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div><span>Đang tải khoảnh khắc...</span></div>';
+      container.innerHTML = renderFeedSkeleton();
 
       try {
         const url = uid ? `/api/feed?user_uid=${uid}` : `/api/feed?refresh=true`;
@@ -1568,8 +1755,8 @@
               </div>
             </div>
 
-            <!-- 2. Squircle Media Container -->
-            <div class="locket-squircle relative mx-auto shadow-2xl overflow-hidden cursor-pointer" onclick="openChatByMomentIndex(${idx})">
+            <!-- 2. Squircle Media Container with Double-Tap to Like -->
+            <div class="locket-squircle relative mx-auto shadow-2xl overflow-hidden cursor-pointer" id="momentSquircle_${mid}" onclick="handleMomentCardClick(event, ${idx}, '${mid}')">
               ${isVideo ? 
                 `<video src="${mediaSrc}" autoplay loop muted playsinline class="w-full h-full object-cover"></video>` : 
                 `<img src="${mediaSrc}" loading="lazy" class="w-full h-full object-cover" alt="Moment">`
@@ -1688,16 +1875,70 @@
       openDirectChatFromMoment(author.uid || m.user, authorName, author.username || '', author.profile_picture || '');
     }
 
-    function sendMomentReaction(event, momentId, emoji) {
-      const btn = event.currentTarget;
-      const rect = btn.getBoundingClientRect();
-      const el = document.createElement('div');
-      el.className = 'floating-reaction text-2xl';
-      el.innerText = emoji;
-      el.style.left = `${rect.left + rect.width / 4}px`;
-      el.style.top = `${rect.top}px`;
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 850);
+    let lastMomentTapTime = {};
+    function handleMomentCardClick(event, idx, mid) {
+      const now = Date.now();
+      const last = lastMomentTapTime[mid] || 0;
+      if (now - last < 320) {
+        // Double tap detected!
+        event.stopPropagation();
+        triggerMomentHeartBurst(mid);
+        sendMomentReaction(event, mid, '❤️');
+        lastMomentTapTime[mid] = 0;
+      } else {
+        lastMomentTapTime[mid] = now;
+        setTimeout(() => {
+          if (lastMomentTapTime[mid] === now) {
+            openChatByMomentIndex(idx);
+          }
+        }, 340);
+      }
+    }
+
+    function triggerMomentHeartBurst(mid) {
+      playPopSound();
+      const card = document.getElementById(`momentSquircle_${mid}`);
+      if (!card) return;
+      const burst = document.createElement('div');
+      burst.className = 'absolute inset-0 flex items-center justify-center pointer-events-none z-30';
+      burst.innerHTML = '<span class="text-7xl animate-heart-burst drop-shadow-2xl">❤️</span>';
+      card.appendChild(burst);
+      setTimeout(() => burst.remove(), 800);
+    }
+
+    async function sendMomentReaction(event, momentId, emoji) {
+      playPopSound();
+      let startX = window.innerWidth / 2;
+      let startY = window.innerHeight * 0.6;
+      if (event && event.currentTarget) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        startX = rect.left + rect.width / 4;
+        startY = rect.top;
+      }
+
+      // Spawn 3 playful floating emojis with varied offsets
+      [-12, 0, 14].forEach((offset, i) => {
+        setTimeout(() => {
+          const el = document.createElement('div');
+          el.className = 'floating-reaction text-2xl';
+          el.innerText = emoji;
+          el.style.left = `${startX + offset}px`;
+          el.style.top = `${startY}px`;
+          document.body.appendChild(el);
+          setTimeout(() => el.remove(), 850);
+        }, i * 60);
+      });
+
+      // Call real backend reaction API
+      try {
+        await fetch('/api/moments/react', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ moment_uid: momentId, emoji: emoji })
+        });
+      } catch (err) {
+        console.warn('React error:', err);
+      }
     }
 
     // ==========================================
@@ -2051,7 +2292,7 @@
       const btn = document.getElementById('btnSendReset');
       const msg = document.getElementById('resetStatusMessage');
       if (!email) {
-        alert("Vui lòng nhập Email của bạn!");
+        showToast("Vui lòng nhập Email của bạn!", "warning");
         return;
       }
       btn.disabled = true;
