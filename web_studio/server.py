@@ -718,18 +718,18 @@ def post_moment():
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
             import subprocess
 
-            # Convert to standard Android-compatible H.264 + AAC + faststart (<5s transcode)
+            # Convert to authentic 1:1 Square Locket Video (Center-crop square & scale to 720x720, HD crisp)
             cmd_transcode = [
                 ffmpeg_exe, "-y",
                 "-i", video_filename,
-                "-vf", "scale=w='min(720,iw)':h=-2",
+                "-vf", "crop='min(iw,ih)':'min(iw,ih)',scale=720:720:flags=lanczos",
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
-                "-preset", "ultrafast",
-                "-crf", "26",
-                "-b:v", "1500k",
-                "-maxrate", "2200k",
-                "-bufsize", "3000k",
+                "-preset", "veryfast",
+                "-crf", "20",
+                "-b:v", "2500k",
+                "-maxrate", "3500k",
+                "-bufsize", "5000k",
                 "-c:a", "aac",
                 "-b:a", "128k",
                 "-movflags", "+faststart",

@@ -894,8 +894,12 @@ class MomentsModule:
 
         # Determine genuine overlay_id
         if note_type == NoteType.STANDARD:
-            target_overlay_id = "caption:standard"
-            data_type = "standard"
+            if final_colors:
+                target_overlay_id = "caption:colors"
+                data_type = "colors"
+            else:
+                target_overlay_id = "caption:standard"
+                data_type = "standard"
         elif preset_info and preset_info.get("overlay_id"):
             target_overlay_id = preset_info["overlay_id"]
             data_type = preset_info.get("type", "static_content")
