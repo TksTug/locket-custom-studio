@@ -732,6 +732,8 @@ def post_moment():
                 "-bufsize", "5000k",
                 "-c:a", "aac",
                 "-b:a", "128k",
+                "-ac", "2",
+                "-ar", "44100",
                 "-movflags", "+faststart",
                 universal_video_path
             ]
