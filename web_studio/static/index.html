@@ -2010,16 +2010,35 @@
       formData.append('frame_type', selectedFrame);
       formData.append('filter_type', activeFilterClass);
 
-      try {
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`HTTP ${res.status}: ${errText.slice(0, 60)}`);
+      // Helper: upload with auto-retry on 502/503 (Render free-tier cold-start)
+      async function doUploadWithRetry(fd, maxAttempts = 3) {
+        let lastErr = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          if (attempt > 1) {
+            statusPill.innerText = `Thử lại lần ${attempt}/${maxAttempts}...`;
+            await new Promise(r => setTimeout(r, 1500 * attempt));
+          }
+          try {
+            const r = await fetch('/api/upload', { method: 'POST', body: fd });
+            if (r.status === 502 || r.status === 503) {
+              lastErr = new Error(`Server tạm thời bận (${r.status}). Đang thử lại...`);
+              continue;
+            }
+            if (!r.ok) {
+              const t = await r.text();
+              throw new Error(`HTTP ${r.status}: ${t.slice(0, 80)}`);
+            }
+            return await r.json();
+          } catch (e) {
+            if (e.message && e.message.startsWith('HTTP')) throw e;
+            lastErr = e;
+          }
         }
-        const data = await res.json();
+        throw lastErr || new Error('Upload thất bại sau nhiều lần thử');
+      }
+
+      try {
+        const data = await doUploadWithRetry(formData);
         if (data.success) {
           if (data.needs_client_dispatch) {
             statusPill.innerText = "Đang gửi trực tiếp lên Locket...";
@@ -2595,6 +2614,9 @@
       const container = document.getElementById('chatConversationsContainer');
       container.innerHTML = '<div class="text-xs text-slate-400 py-8 text-center">Đang tải cuộc trò chuyện...</div>';
       try {
+        if (allFriendsList.length === 0) {
+          await loadFriends();
+        }
         const res = await fetch('/api/chat/conversations');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
@@ -2602,29 +2624,38 @@
         document.getElementById('chatConversationsCount').innerText = `${allConversationsList.length} cuộc trò chuyện`;
         renderChatConversations(allConversationsList);
       } catch (err) {
-        container.innerHTML = '<div class="text-xs text-rose-400 py-8 text-center">Lỗi tải tin nhắn. Vui lòng thử lại sau!</div>';
+        console.warn('loadChatConversations error:', err);
+        container.innerHTML = `
+          <div class="text-center py-10 space-y-2">
+            <div class="text-xs text-rose-400">Chưa tải được tin nhắn lúc này.</div>
+            <button onclick="loadChatConversations()" class="px-3.5 py-1.5 rounded-full glass-pill text-xs font-bold text-amber-300 hover:text-white transition-all">Thử lại</button>
+          </div>
+        `;
       }
     }
 
     function renderChatConversations(conversations) {
       const container = document.getElementById('chatConversationsContainer');
-      if (conversations.length === 0) {
+      if (!conversations || conversations.length === 0) {
         container.innerHTML = '<div class="text-xs text-slate-400 py-8 text-center">Chưa có cuộc trò chuyện nào.</div>';
         return;
       }
       container.innerHTML = conversations.map(c => {
-        const peer = c.peer || {};
+        const pUid = c.peer_uid || (c.peer && c.peer.uid);
+        const friend = allFriendsList.find(f => f.uid === pUid);
+        const peer = friend || c.peer || {};
         const peerName = peer.first_name ? `${peer.first_name} ${peer.last_name || ''}`.trim() : (peer.username || 'Bạn bè');
+        const peerPic = peer.profile_picture || (friend && friend.profile_picture) || '';
         const lastMsg = c.last_message || 'Khoảnh khắc mới';
 
         return `
           <!-- Conversation Item (IMAGE 4) -->
-          <div onclick="openDirectChatFromMoment('${peer.uid || ''}', '${peerName}', '${peer.username || ''}', '${peer.profile_picture || ''}', '${c.conversation_id || ''}')" class="flex items-center justify-between p-3.5 rounded-2xl glass-pill cursor-pointer hover:bg-white/[0.08] active:scale-[0.99] transition-all">
+          <div onclick="openDirectChatFromMoment('${pUid || ''}', '${peerName.replace(/'/g, "\\'")}', '${(peer.username || '').replace(/'/g, "\\'")}', '${peerPic}', '${c.conversation_id || ''}')" class="flex items-center justify-between p-3.5 rounded-2xl glass-pill cursor-pointer hover:bg-white/[0.08] active:scale-[0.99] transition-all">
             <div class="flex items-center gap-3">
               <div class="relative w-11 h-11 rounded-full p-0.5 ring-2 ring-amber-400/30 overflow-hidden shrink-0">
-                ${peer.profile_picture ? 
-                  `<img src="${peer.profile_picture}" class="w-full h-full rounded-full object-cover">` : 
-                  `<div class="w-full h-full rounded-full bg-slate-700 flex items-center justify-center font-bold text-sm text-white">${peerName[0]}</div>`
+                ${peerPic ? 
+                  `<img src="${peerPic}" class="w-full h-full rounded-full object-cover">` : 
+                  `<div class="w-full h-full rounded-full bg-slate-700 flex items-center justify-center font-bold text-sm text-white">${(peerName || 'B')[0]}</div>`
                 }
               </div>
               <div class="flex flex-col">

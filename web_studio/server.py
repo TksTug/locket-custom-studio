@@ -518,30 +518,36 @@ def get_conversations():
         return jsonify({"conversations": []})
 
     try:
-        convs = client.chat.get_conversations()
-        friend_map = {f["uid"]: f for f in FRIENDS_CACHE.get("friends", [])}
+        c_client, sid = get_client_for_request()
+        convs = c_client.chat.get_conversations()
+        # Use cached friends or fetch all friends at once to avoid slow 1-by-1 queries
+        friends = FRIENDS_CACHE.get("friends")
+        if not friends:
+            try:
+                friends = c_client.friends.get_all()
+                FRIENDS_CACHE["friends"] = friends
+            except Exception:
+                friends = []
+        friend_map = {f.get("uid"): f for f in friends if isinstance(f, dict) and f.get("uid")}
         result = []
 
         for c in convs:
             peer_uid = c.get("peer_uid")
             peer = friend_map.get(peer_uid)
             if not peer and peer_uid:
-                try:
-                    p = client.user.get_profile(peer_uid)
-                    peer = {
-                        "uid": peer_uid,
-                        "first_name": p.get("first_name", "Bạn bè"),
-                        "last_name": p.get("last_name", ""),
-                        "username": p.get("username", ""),
-                        "profile_picture": p.get("profile_picture_url")
-                    }
-                except Exception:
-                    peer = {"uid": peer_uid, "first_name": "Bạn Locket", "username": "locket"}
+                peer = {
+                    "uid": peer_uid,
+                    "first_name": f"Bạn @{peer_uid[:6]}",
+                    "last_name": "",
+                    "username": peer_uid[:8],
+                    "profile_picture": None
+                }
 
             last_msg = c.get("latest_message", {})
             result.append({
                 "conversation_id": c.get("conversation_id"),
-                "peer": peer or {"first_name": "Bạn bè", "username": "locket"},
+                "peer_uid": peer_uid,
+                "peer": peer or {"uid": peer_uid, "first_name": "Bạn Locket", "username": "locket"},
                 "last_message": last_msg.get("text", ""),
                 "timestamp": last_msg.get("timestamp"),
                 "unread_count": c.get("unread_count", 0)
@@ -718,30 +724,40 @@ def post_moment():
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
             import subprocess
 
-            # Convert to authentic 1:1 Square Locket Video (Center-crop square & scale to 720x720, HD crisp)
+            # Convert to iOS/Android compatible H.264 Baseline MP4, 480x480 square.
+            # profile:v baseline + level 3.1: every iPhone 4S+, every Android 4.0+.
+            # ultrafast preset + 480px: transcode finishes in <10s on Render free tier.
+            # setsar=1: resets sample aspect ratio so AVPlayer/ExoPlayer render correctly.
+            vf_filter = (
+                "crop='min(iw,ih)':'min(iw,ih)',"
+                "scale=480:480:flags=bilinear:force_original_aspect_ratio=disable,"
+                "setsar=1"
+            )
             cmd_transcode = [
                 ffmpeg_exe, "-y",
                 "-i", video_filename,
-                "-vf", "crop='min(iw,ih)':'min(iw,ih)',scale=720:720:flags=lanczos",
+                "-vf", vf_filter,
                 "-c:v", "libx264",
+                "-profile:v", "baseline",
+                "-level", "3.1",
                 "-pix_fmt", "yuv420p",
-                "-preset", "veryfast",
-                "-crf", "20",
-                "-b:v", "2500k",
-                "-maxrate", "3500k",
-                "-bufsize", "5000k",
+                "-preset", "ultrafast",
+                "-crf", "28",
+                "-movflags", "+faststart",
                 "-c:a", "aac",
-                "-b:a", "128k",
+                "-b:a", "96k",
                 "-ac", "2",
                 "-ar", "44100",
-                "-movflags", "+faststart",
                 universal_video_path
             ]
             try:
-                subprocess.run(cmd_transcode, capture_output=True, timeout=60)
+                proc = subprocess.run(cmd_transcode, capture_output=True, timeout=90)
+                if proc.returncode != 0:
+                    ffmpeg_err = proc.stderr.decode('utf-8', errors='replace')[-800:]
+                    print(f"[FFmpeg stderr] {ffmpeg_err}")
             except Exception as ex:
                 print(f"Transcode warning: {ex}")
-            video_path = universal_video_path if os.path.exists(universal_video_path) else video_filename
+            video_path = universal_video_path if (os.path.exists(universal_video_path) and os.path.getsize(universal_video_path) > 1000) else video_filename
 
             # Extract first frame as thumbnail and apply effects
             raw_thumb_path = os.path.join(temp_dir, "raw_thumb.png")

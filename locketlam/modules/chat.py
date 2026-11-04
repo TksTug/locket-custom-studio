@@ -113,7 +113,10 @@ class ChatModule:
         reactions, sender details, and server timestamps.
         """
         import urllib.request
-        token = self.client.session.id_token
+        try:
+            token = self.client.session.get_valid_token()
+        except Exception:
+            token = self.client.session.id_token
         my_uid = self.client.session.uid
         if not token:
             return []
@@ -389,7 +392,10 @@ class ChatModule:
         including conversation ID, peer user, unread count, read status, and latest message snippet.
         """
         import urllib.request
-        token = self.client.session.id_token
+        try:
+            token = self.client.session.get_valid_token()
+        except Exception:
+            token = self.client.session.id_token
         my_uid = self.client.session.uid
         if not token:
             return []
