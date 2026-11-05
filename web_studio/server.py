@@ -13,6 +13,7 @@ import time
 import json
 import base64
 import tempfile
+import shutil
 import traceback
 import urllib.request
 import requests
@@ -432,82 +433,77 @@ def get_feed():
     except Exception as ex_api:
         print(f"[Feed] get_latest() fallback to Firestore: {ex_api}")
 
-    # 2. Secondary fallback: Scan Firestore conversations for moments if feed_items is empty
-    try:
-        if not feed_items:
+    # 2. Secondary fallback: Scan Firestore conversations for moments ONLY if feed_items is still empty
+    if not feed_items:
+        try:
             token = c.session.get_valid_token()
             u_url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/conversations"
-        req = urllib.request.Request(u_url, headers={"Authorization": f"Bearer {token}"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            conv_docs = json.loads(resp.read().decode("utf-8")).get("documents", [])
+            req = urllib.request.Request(u_url, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                conv_docs = json.loads(resp.read().decode("utf-8")).get("documents", [])
 
-        def fetch_conv_messages(cdoc):
-            cid = cdoc["name"].split("/")[-1]
-            m_url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/conversations/{cid}/messages?pageSize=20"
-            m_req = urllib.request.Request(m_url, headers={"Authorization": f"Bearer {token}"})
-            try:
-                with urllib.request.urlopen(m_req, timeout=6) as m_resp:
-                    return json.loads(m_resp.read().decode("utf-8")).get("documents", [])
-            except Exception:
-                return []
+            def fetch_conv_messages(cdoc):
+                cid = cdoc["name"].split("/")[-1]
+                m_url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/conversations/{cid}/messages?pageSize=20"
+                m_req = urllib.request.Request(m_url, headers={"Authorization": f"Bearer {token}"})
+                try:
+                    with urllib.request.urlopen(m_req, timeout=6) as m_resp:
+                        return json.loads(m_resp.read().decode("utf-8")).get("documents", [])
+                except Exception:
+                    return []
 
-        with ThreadPoolExecutor(max_workers=10) as ex:
-            all_batches = list(ex.map(fetch_conv_messages, conv_docs))
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                all_batches = list(ex.map(fetch_conv_messages, conv_docs))
 
-        feed_items = []
-        seen_thumbs = set()
-        seen_mids = set()
+            seen_thumbs = set()
+            for batch in all_batches:
+                for mdoc in batch:
+                    f = mdoc.get("fields", {})
+                    thumb = f.get("thumbnail_url", {}).get("stringValue")
+                    if not thumb or thumb in seen_thumbs:
+                        continue
+                    seen_thumbs.add(thumb)
 
-        for batch in all_batches:
-            for mdoc in batch:
-                f = mdoc.get("fields", {})
-                thumb = f.get("thumbnail_url", {}).get("stringValue")
-                if not thumb or thumb in seen_thumbs:
-                    continue
-                seen_thumbs.add(thumb)
+                    sender = f.get("sender", {}).get("stringValue", "")
+                    caption = f.get("body", {}).get("stringValue", "")
+                    created_at = f.get("created_at", {}).get("timestampValue", "")
+                    mid = f.get("reply_moment", {}).get("stringValue") or mdoc["name"].split("/")[-1]
+                    if mid in seen_mids:
+                        continue
+                    seen_mids.add(mid)
 
-                sender = f.get("sender", {}).get("stringValue", "")
-                caption = f.get("body", {}).get("stringValue", "")
-                created_at = f.get("created_at", {}).get("timestampValue", "")
-                mid = f.get("reply_moment", {}).get("stringValue") or mdoc["name"].split("/")[-1]
-                if mid in seen_mids:
-                    continue
-                seen_mids.add(mid)
+                    if user_uid and sender != user_uid:
+                        continue
 
-                # Filter by single friend if requested
-                if user_uid and sender != user_uid:
-                    continue
+                    ts = parse_moment_timestamp(created_at)
+                    author = resolve_author(sender)
 
-                ts = parse_moment_timestamp(created_at)
-                author = resolve_author(sender)
+                    feed_items.append({
+                        "moment_uid": mid,
+                        "thumbnail_url": thumb,
+                        "video_url": None,
+                        "caption": caption,
+                        "date": created_at,
+                        "timestamp": ts,
+                        "author": author,
+                        "user": sender
+                    })
+        except Exception as ex_conv:
+            print(f"[Feed] Firestore conversation scan fallback error: {ex_conv}")
 
-                feed_items.append({
-                    "moment_uid": mid,
-                    "thumbnail_url": thumb,
-                    "video_url": None,
-                    "caption": caption,
-                    "date": created_at,
-                    "timestamp": ts,
-                    "author": author,
-                    "user": sender
-                })
+    # Sort strictly by timestamp descending (newest moments first)
+    feed_items.sort(key=lambda x: x.get("timestamp", 0.0), reverse=True)
 
-        # Sort strictly by timestamp descending (newest moments first)
-        feed_items.sort(key=lambda x: x.get("timestamp", 0.0), reverse=True)
+    if len(feed_items) > 0:
+        user_feed_cache["timestamp"] = now
+        user_feed_cache["feed"] = feed_items
+        try:
+            with open(disk_feed_file, "w", encoding="utf-8") as f:
+                json.dump({"timestamp": now, "feed": feed_items}, f, ensure_ascii=False)
+        except Exception:
+            pass
 
-        if len(feed_items) > 0:
-            user_feed_cache["timestamp"] = now
-            user_feed_cache["feed"] = feed_items
-            try:
-                with open(disk_feed_file, "w", encoding="utf-8") as f:
-                    json.dump({"timestamp": now, "feed": feed_items}, f, ensure_ascii=False)
-            except Exception:
-                pass
-
-        return jsonify({"feed": feed_items, "moments": feed_items})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"feed": user_feed_cache.get("feed", []), "moments": user_feed_cache.get("feed", []), "error": str(e)})
+    return jsonify({"feed": feed_items, "moments": feed_items})
 
 @app.route("/api/moments/react", methods=["POST"])
 def react_moment():
@@ -838,6 +834,13 @@ def post_moment():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        # Clean up temporary transcode and thumbnail files to prevent disk exhaustion
+        try:
+            if 'temp_dir' in locals() and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
 
 @app.route("/api/test-render-locket", methods=["GET"])
 def test_render_locket():
