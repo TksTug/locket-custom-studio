@@ -35,10 +35,11 @@ class ChatModule:
         return list(ReactionEmoji.OFFICIAL_PALETTE)
 
     def _get_history_file(self) -> str:
-        """Returns the local path for persistent chat history cache."""
+        """Returns the local path for persistent chat history cache (isolated per UID)."""
         import os
         base_dir = os.path.dirname(os.path.abspath(self.client.session.session_path or "locketlam_session.json"))
-        return os.path.join(base_dir, "chat_history.json")
+        my_uid = self.client.session.uid or "anonymous"
+        return os.path.join(base_dir, f"chat_history_{my_uid}.json")
 
     def _load_history(self) -> dict:
         """Loads cached chat history."""

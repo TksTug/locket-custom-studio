@@ -263,18 +263,7 @@ def get_user_friends(c, my_uid, force_refresh=False):
         except Exception:
             pass
 
-    # 3. Fallback to pre-cached friends catalog if available
-    legacy_file = os.path.join(os.path.dirname(__file__), "friends_cache.json")
-    if not force_refresh and os.path.exists(legacy_file):
-        try:
-            with open(legacy_file, "r", encoding="utf-8") as f:
-                d = json.load(f)
-                if len(d.get("friends", [])) > 0:
-                    user_fcache["timestamp"] = d.get("timestamp", now)
-                    user_fcache["friends"] = d["friends"]
-                    return user_fcache["friends"]
-        except Exception:
-            pass
+    # (Legacy static friends_cache removed to prevent cross-account leakage)
 
     try:
         token = c.session.get_valid_token()
@@ -415,10 +404,39 @@ def get_feed():
             return friend_map[uid]
         return friend_map.get(uid, {"uid": uid, "first_name": f"@{uid[:6]}", "username": uid[:8]})
 
-    # HIGH-SPEED RELIABLE FIRESTORE FEED ENGINE (100% cloud-compatible, never blocked by Cloud Armor)
+    # 1. Primary: Try genuine Locket feed API (includes friends moments & video_url)
+    feed_items = []
+    seen_mids = set()
     try:
-        token = c.session.get_valid_token()
-        u_url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/conversations"
+        latest_api_moments = c.moments.get_latest()
+        if isinstance(latest_api_moments, list):
+            for m in latest_api_moments:
+                mid = m.get("canonical_uid") or m.get("md5")
+                if not mid or mid in seen_mids:
+                    continue
+                seen_mids.add(mid)
+                sender = m.get("user", "")
+                if user_uid and sender != user_uid:
+                    continue
+                d_val = m.get("date")
+                feed_items.append({
+                    "moment_uid": mid,
+                    "thumbnail_url": m.get("thumbnail_url"),
+                    "video_url": m.get("video_url"),
+                    "caption": m.get("caption", ""),
+                    "date": d_val,
+                    "timestamp": parse_moment_timestamp(d_val),
+                    "author": resolve_author(sender),
+                    "user": sender
+                })
+    except Exception as ex_api:
+        print(f"[Feed] get_latest() fallback to Firestore: {ex_api}")
+
+    # 2. Secondary fallback: Scan Firestore conversations for moments if feed_items is empty
+    try:
+        if not feed_items:
+            token = c.session.get_valid_token()
+            u_url = f"https://firestore.googleapis.com/v1/projects/locket-4252a/databases/(default)/documents/users/{my_uid}/conversations"
         req = urllib.request.Request(u_url, headers={"Authorization": f"Bearer {token}"})
         with urllib.request.urlopen(req, timeout=8) as resp:
             conv_docs = json.loads(resp.read().decode("utf-8")).get("documents", [])
@@ -519,15 +537,10 @@ def get_conversations():
 
     try:
         c_client, sid = get_client_for_request()
+        my_uid = c_client.session.uid or "anonymous"
         convs = c_client.chat.get_conversations()
-        # Use cached friends or fetch all friends at once to avoid slow 1-by-1 queries
-        friends = FRIENDS_CACHE.get("friends")
-        if not friends:
-            try:
-                friends = c_client.friends.get_all()
-                FRIENDS_CACHE["friends"] = friends
-            except Exception:
-                friends = []
+        # Use per-user cached friends to maintain session isolation across multiple users
+        friends = get_user_friends(c_client, my_uid)
         friend_map = {f.get("uid"): f for f in friends if isinstance(f, dict) and f.get("uid")}
         result = []
 
@@ -726,13 +739,10 @@ def post_moment():
 
             # Convert to iOS/Android compatible H.264 Baseline MP4, 480x480 square.
             # profile:v baseline + level 3.1: every iPhone 4S+, every Android 4.0+.
-            # ultrafast preset + 480px: transcode finishes in <10s on Render free tier.
-            # setsar=1: resets sample aspect ratio so AVPlayer/ExoPlayer render correctly.
-            vf_filter = (
-                "crop='min(iw,ih)':'min(iw,ih)',"
-                "scale=480:480:flags=bilinear:force_original_aspect_ratio=disable,"
-                "setsar=1"
-            )
+            # Authentic 1:1 Square Locket Video: exact center-crop + 720x720 HD Lanczos
+            # crop=w=min(iw\,ih):h=min(iw\,ih) automatically centers (X=(iw-w)/2, Y=(ih-h)/2)
+            # H.264 Baseline Level 3.1 + Stereo 44.1kHz AAC guarantees 100% smooth playback on iOS & Android
+            vf_filter = "crop=w=min(iw\\,ih):h=min(iw\\,ih),scale=720:720:flags=lanczos,setsar=1"
             cmd_transcode = [
                 ffmpeg_exe, "-y",
                 "-i", video_filename,
@@ -742,10 +752,10 @@ def post_moment():
                 "-level", "3.1",
                 "-pix_fmt", "yuv420p",
                 "-preset", "ultrafast",
-                "-crf", "28",
+                "-crf", "26",
                 "-movflags", "+faststart",
                 "-c:a", "aac",
-                "-b:a", "96k",
+                "-b:a", "128k",
                 "-ac", "2",
                 "-ar", "44100",
                 universal_video_path

@@ -2089,26 +2089,32 @@
     // 9. FEED & KHOẢNH KHẮC ENGINE (Direct Authentic CORS Feed Architecture)
     // ==========================================
     let cachedIdToken = null;
+    let cachedIdTokenTs = 0; // timestamp of last token fetch
+    const TOKEN_TTL_MS = 55 * 60 * 1000; // 55 minutes (Firebase tokens last 60min)
 
-    async function getValidIdToken() {
-      if (cachedIdToken) return cachedIdToken;
+    async function getValidIdToken(forceRefresh = false) {
+      const now = Date.now();
+      if (!forceRefresh && cachedIdToken && (now - cachedIdTokenTs) < TOKEN_TTL_MS) {
+        return cachedIdToken;
+      }
       try {
         const res = await fetch('/api/auth/token');
         if (res.ok) {
           const d = await res.json();
           if (d.token) {
             cachedIdToken = d.token;
+            cachedIdTokenTs = now;
             return d.token;
           }
         }
       } catch (e) {
         console.warn('Could not fetch token:', e);
       }
-      return null;
+      return cachedIdToken || null;
     }
 
-    async function fetchLocketFeedDirectly() {
-      const token = await getValidIdToken();
+    async function fetchLocketFeedDirectly(forceRefresh = false) {
+      const token = await getValidIdToken(forceRefresh);
       if (!token) return null;
 
       const friendMap = {};
@@ -2139,7 +2145,7 @@
 
           if (!apiRes.ok) break;
           const apiJson = await apiRes.json();
-          const batch = apiJson.result?.data || [];
+          const batch = (apiJson.result && apiJson.result.data) || apiJson.data || (Array.isArray(apiJson.result) ? apiJson.result : []);
           if (!batch || batch.length === 0) break;
 
           const m = batch[0];
@@ -2232,7 +2238,7 @@
         }
 
         // 1. Try Direct Authentic Feed via CORS (Zero datacenter block, exact captions and friends)
-        let directMoments = await fetchLocketFeedDirectly();
+        let directMoments = await fetchLocketFeedDirectly(forceRefresh);
 
         if (directMoments && directMoments.length > 0) {
           allMomentsList = directMoments;
@@ -2343,7 +2349,7 @@
           });
           if (apiRes.ok) {
             const apiJson = await apiRes.json();
-            const batch = apiJson.result?.data || [];
+            const batch = (apiJson.result && apiJson.result.data) || apiJson.data || (Array.isArray(apiJson.result) ? apiJson.result : []);
             if (batch.length > 0) {
               const m = batch[0];
               const author = allFriendsList.find(f => f.uid === uid) || { first_name: 'Bạn bè' };
@@ -2397,8 +2403,8 @@
         const authorName = author.first_name ? `${author.first_name} ${author.last_name || ''}`.trim() : (author.username || 'Bạn bè');
         const authorUser = author.username ? `@${author.username}` : '';
         const timeAgo = formatTimeAgo(m.date || m.timestamp);
-        const isVideo = m.video_url || (m.thumbnail_url && m.thumbnail_url.includes('video'));
-        const mediaSrc = m.video_url || m.thumbnail_url;
+        const isVideo = Boolean(m.video_url);
+        const mediaSrc = isVideo ? m.video_url : (m.thumbnail_url || m.image_url);
         const mid = m.moment_uid || m.id || idx;
 
         return `
@@ -3024,10 +3030,16 @@
       }
     }
 
-    async function logoutSession() {
+        async function logoutSession() {
       if (confirm("Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Locket này?")) {
         try {
           localStorage.removeItem('locket_refresh_token');
+          allFriendsList = [];
+          allMomentsList = [];
+          allConversationsList = [];
+          currentUserProfile = null;
+          cachedIdToken = null;
+          cachedIdTokenTs = 0;
           await fetch('/api/auth/logout', { method: 'POST' });
         } catch (e) {}
         window.location.reload();
