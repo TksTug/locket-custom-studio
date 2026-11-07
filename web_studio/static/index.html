@@ -392,7 +392,7 @@
           <img id="cameraPreviewImage" class="w-full h-full object-cover hidden filter-none transition-all duration-300" alt="Captured Moment">
 
           <!-- Picked Long Video Preview (2 - 5 min video) -->
-          <video id="cameraPreviewVideo" autoplay loop muted playsinline class="w-full h-full object-cover hidden filter-none transition-all duration-300"></video>
+          <video id="cameraPreviewVideo" autoplay loop muted playsinline webkit-playsinline class="w-full h-full object-cover hidden filter-none transition-all duration-300"></video>
 
           <!-- Top-Left Weather Radar Badge (Overlaid on photo) -->
           <!-- Instagram-style Floating Swipe Filter Badge Overlay -->
@@ -1794,7 +1794,8 @@
       if (!file) return;
 
       capturedBlob = file;
-      isVideoMedia = file.type.startsWith('video/');
+      isVideoMedia = (file.type && file.type.startsWith('video/')) || 
+                     /\.(mp4|mov|m4v|3gp|webm|avi|mkv|quicktime)$/i.test(file.name || '');
       const previewImg = document.getElementById('cameraPreviewImage');
       const previewVid = document.getElementById('cameraPreviewVideo');
 
@@ -1802,12 +1803,25 @@
         previewImg.classList.add('hidden');
         previewVid.classList.remove('hidden');
         previewVid.src = URL.createObjectURL(file);
+        try {
+          previewVid.load();
+          previewVid.play().catch(e => console.warn('Preview video play warning:', e));
+        } catch (_) {}
+
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        if (file.size > 50 * 1024 * 1024) {
+          showToast(`Video lớn (${sizeMB} MB). Sẽ mất chút thời gian để gửi & nén chuẩn...`, "info");
+        }
       } else {
-        previewVid.classList.add('hidden');
+        if (previewVid) {
+          previewVid.pause();
+          previewVid.classList.add('hidden');
+        }
         previewImg.classList.remove('hidden');
         previewImg.src = URL.createObjectURL(file);
       }
       enterPostCaptureState();
+      try { event.target.value = ''; } catch (_) {}
     }
 
     function enterPostCaptureState() {
@@ -1993,12 +2007,13 @@
       }
 
       const formData = new FormData();
+      const videoFilename = (capturedBlob.name && /\.(mov|mp4|m4v|3gp|webm)$/i.test(capturedBlob.name)) ? capturedBlob.name : 'moment.mp4';
       if (isVideoMedia) {
-        formData.append('video', capturedBlob, 'moment.mp4');
+        formData.append('video', capturedBlob, videoFilename);
       } else {
         formData.append('image', finalBlob, 'moment.jpg');
       }
-      formData.append('file', capturedBlob, isVideoMedia ? 'moment.mp4' : 'moment.jpg');
+      formData.append('file', capturedBlob, isVideoMedia ? videoFilename : 'moment.jpg');
       formData.append('caption', document.getElementById('cameraCaptionInput').value.trim());
       if (selectedCaptionGradient && selectedCaptionGradient.length > 0) {
         formData.append('custom_gradient', JSON.stringify(selectedCaptionGradient));
@@ -2016,8 +2031,53 @@
       formData.append('frame_type', selectedFrame);
       formData.append('filter_type', activeFilterClass);
 
+      function uploadFormDataWithProgress(fd) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', '/api/upload');
+          xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+              const pct = Math.round((evt.loaded / evt.total) * 100);
+              if (pct < 100) {
+                statusPill.innerText = isVideoMedia 
+                  ? `Đang tải video lên: ${pct}%...` 
+                  : `Đang tải ảnh lên: ${pct}%...`;
+              } else {
+                statusPill.innerText = isVideoMedia 
+                  ? `✨ Đang xử lý video chuẩn 1:1 HD & nén Locket...` 
+                  : `Đang lưu khoảnh khắc...`;
+              }
+            }
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                resolve(JSON.parse(xhr.responseText));
+              } catch (e) {
+                reject(new Error("Lỗi đọc dữ liệu phản hồi từ máy chủ"));
+              }
+            } else if (xhr.status === 502 || xhr.status === 503) {
+              reject(new Error(`SERVER_BUSY_${xhr.status}`));
+            } else {
+              let errMsg = `Lỗi server (${xhr.status})`;
+              try {
+                const j = JSON.parse(xhr.responseText);
+                if (j && j.error) errMsg = j.error;
+              } catch (_) {
+                if (xhr.responseText) errMsg = xhr.responseText.slice(0, 100);
+              }
+              reject(new Error(errMsg));
+            }
+          };
+          xhr.onerror = () => reject(new Error("Mất kết nối mạng khi tải lên. Vui lòng kiểm tra lại đường truyền WiFi/4G!"));
+          xhr.ontimeout = () => reject(new Error("Quá thời gian tải lên (mạng yếu hoặc video quá nặng). Vui lòng thử lại với video ngắn hơn!"));
+          xhr.timeout = 120000;
+          xhr.send(fd);
+        });
+      }
+
       // Helper: upload with auto-retry on 502/503 (Render free-tier cold-start)
-      async function doUploadWithRetry(fd, maxAttempts = 3) {
+      async function doUploadWithRetry(fd, maxAttempts = 2) {
         let lastErr = null;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           if (attempt > 1) {
@@ -2025,22 +2085,16 @@
             await new Promise(r => setTimeout(r, 1500 * attempt));
           }
           try {
-            const r = await fetch('/api/upload', { method: 'POST', body: fd });
-            if (r.status === 502 || r.status === 503) {
-              lastErr = new Error(`Server tạm thời bận (${r.status}). Đang thử lại...`);
+            return await uploadFormDataWithProgress(fd);
+          } catch (e) {
+            if (e.message && e.message.startsWith('SERVER_BUSY_')) {
+              lastErr = new Error("Máy chủ Render đang bận hoặc khởi động lại, vui lòng thử lại sau giây lát.");
               continue;
             }
-            if (!r.ok) {
-              const t = await r.text();
-              throw new Error(`HTTP ${r.status}: ${t.slice(0, 80)}`);
-            }
-            return await r.json();
-          } catch (e) {
-            if (e.message && e.message.startsWith('HTTP')) throw e;
-            lastErr = e;
+            throw e;
           }
         }
-        throw lastErr || new Error('Upload thất bại sau nhiều lần thử');
+        throw lastErr || new Error('Upload thất bại. Vui lòng thử lại!');
       }
 
       try {

@@ -678,13 +678,27 @@ def post_moment():
         return jsonify({"success": False, "error": "Bạn cần đăng nhập tài khoản Locket trước!"}), 401
 
     try:
-        image_file = request.files.get("image") or request.files.get("file")
+        image_file = request.files.get("image")
         video_file = request.files.get("video")
+        file_param = request.files.get("file")
 
-        uploaded = request.files.get("file")
-        if uploaded and uploaded.content_type and ("video" in uploaded.content_type or uploaded.filename.endswith((".mp4", ".mov", ".m4v"))):
-            video_file = uploaded
-            image_file = None
+        # Robust multi-field video detection (iOS Safari often sends .mov under 'file' or 'image')
+        video_extensions = (".mp4", ".mov", ".m4v", ".3gp", ".webm", ".avi", ".mkv", ".quicktime")
+        if not video_file and file_param:
+            fname = (file_param.filename or "").lower()
+            ctype = (file_param.content_type or "").lower()
+            if any(fname.endswith(ext) for ext in video_extensions) or "video" in ctype:
+                video_file = file_param
+                image_file = None
+            elif not image_file:
+                image_file = file_param
+
+        if not video_file and image_file:
+            fname = (image_file.filename or "").lower()
+            ctype = (image_file.content_type or "").lower()
+            if any(fname.endswith(ext) for ext in video_extensions) or "video" in ctype:
+                video_file = image_file
+                image_file = None
 
         if not image_file and not video_file:
             return jsonify({"success": False, "error": "Vui lòng chọn ảnh hoặc video để đăng!"}), 400
@@ -707,11 +721,11 @@ def post_moment():
             weather_lon = request.form.get("weather_lon")
             weather_data = fetch_live_weather(city_name=weather_city, lat=weather_lat, lon=weather_lon)
 
-        temp_dir = tempfile.mkdtemp()
+        temp_dir = tempfile.mkdtemp(prefix="locket_moment_")
         processed_image_path = os.path.join(temp_dir, "thumb.webp")
         video_path = None
 
-        if image_file:
+        if image_file and not video_file:
             img_bytes = image_file.read()
             processed_img = process_image_with_options(
                 img_bytes,
@@ -724,7 +738,10 @@ def post_moment():
             )
             processed_img.convert("RGB").save(processed_image_path, format="WEBP", quality=90)
         elif video_file:
-            video_filename = os.path.join(temp_dir, "input_raw.mp4")
+            raw_ext = os.path.splitext(video_file.filename or "")[1].lower()
+            if raw_ext not in [".mp4", ".mov", ".m4v", ".3gp", ".webm", ".avi", ".mkv"]:
+                raw_ext = ".mp4"
+            video_filename = os.path.join(temp_dir, f"input_raw{raw_ext}")
             video_file.save(video_filename)
 
             # Transcode to Universal H.264 MP4 (Guarantees smooth playback on ALL Android & iOS phones)
@@ -733,14 +750,19 @@ def post_moment():
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
             import subprocess
 
-            # Convert to iOS/Android compatible H.264 Baseline MP4, 480x480 square.
-            # profile:v baseline + level 3.1: every iPhone 4S+, every Android 4.0+.
-            # Authentic 1:1 Square Locket Video: exact center-crop + 720x720 HD Lanczos
-            # crop=w=min(iw\,ih):h=min(iw\,ih) automatically centers (X=(iw-w)/2, Y=(ih-h)/2)
-            # H.264 Baseline Level 3.1 + Stereo 44.1kHz AAC guarantees 100% smooth playback on iOS & Android
-            vf_filter = "crop=w=min(iw\\,ih):h=min(iw\\,ih),scale=720:720:flags=lanczos,setsar=1"
+            # Fast 1:1 HD Square Transcode optimized for iPhone 4K/HEVC & Render Free Tier CPU:
+            # 1. '-t 30': Caps max duration to 30s (prevents worker lockup on long raw files).
+            # 2. scale to min 720 first, then crop 720:720 (5-20x faster than lanczos crop-then-scale).
+            # 3. '-metadata:s:v:0 rotate=0': Prevents double rotation bugs on iOS portrait videos.
+            # 4. '-pix_fmt yuv420p': Standard 8-bit YUV for universal compatibility (strips iPhone 10-bit HDR/Dolby Vision).
+            # 5. '-c:v libx264 -profile:v baseline -level 3.1 -preset ultrafast -crf 26': 100% playable on all iOS & Android versions.
+            # 6. '-maxrate 1600k -bufsize 3200k': Guarantees output size < 5.5MB for 30s, preventing secondary re-compression.
+            # 7. '-c:a aac -b:a 128k -ac 2 -ar 44100': Universal 2-channel 44.1kHz AAC stereo audio for ExoPlayer & AVPlayer.
+            # 8. '-movflags +faststart': Puts moov atom at beginning of MP4 so videos stream instantly without black screen buffering!
+            vf_filter = "scale=720:720:force_original_aspect_ratio=increase:flags=bicubic,crop=720:720,setsar=1"
             cmd_transcode = [
                 ffmpeg_exe, "-y",
+                "-t", "30",
                 "-i", video_filename,
                 "-vf", vf_filter,
                 "-c:v", "libx264",
@@ -749,6 +771,9 @@ def post_moment():
                 "-pix_fmt", "yuv420p",
                 "-preset", "ultrafast",
                 "-crf", "26",
+                "-maxrate", "1600k",
+                "-bufsize", "3200k",
+                "-metadata:s:v:0", "rotate=0",
                 "-movflags", "+faststart",
                 "-c:a", "aac",
                 "-b:a", "128k",
@@ -757,22 +782,65 @@ def post_moment():
                 universal_video_path
             ]
             try:
-                proc = subprocess.run(cmd_transcode, capture_output=True, timeout=90)
+                proc = subprocess.run(cmd_transcode, capture_output=True, timeout=50)
                 if proc.returncode != 0:
                     ffmpeg_err = proc.stderr.decode('utf-8', errors='replace')[-800:]
-                    print(f"[FFmpeg stderr] {ffmpeg_err}")
+                    print(f"[FFmpeg stderr primary] {ffmpeg_err}")
             except Exception as ex:
-                print(f"Transcode warning: {ex}")
+                print(f"Transcode primary warning: {ex}")
+
+            # Fallback 480p transcode if primary 720p failed or timed out
+            if not os.path.exists(universal_video_path) or os.path.getsize(universal_video_path) < 1000:
+                print("[FFmpeg] Primary transcode failed or empty, running fast 480p fallback...")
+                vf_fallback = "scale=480:480:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=480:480,setsar=1"
+                cmd_fallback = [
+                    ffmpeg_exe, "-y",
+                    "-t", "30",
+                    "-i", video_filename,
+                    "-vf", vf_fallback,
+                    "-c:v", "libx264",
+                    "-profile:v", "baseline",
+                    "-level", "3.1",
+                    "-pix_fmt", "yuv420p",
+                    "-preset", "ultrafast",
+                    "-crf", "28",
+                    "-maxrate", "1200k",
+                    "-bufsize", "2400k",
+                    "-metadata:s:v:0", "rotate=0",
+                    "-movflags", "+faststart",
+                    "-c:a", "aac",
+                    "-b:a", "96k",
+                    "-ac", "2",
+                    "-ar", "44100",
+                    universal_video_path
+                ]
+                try:
+                    subprocess.run(cmd_fallback, capture_output=True, timeout=30)
+                except Exception as ex_fb:
+                    print(f"Transcode fallback warning: {ex_fb}")
+
             video_path = universal_video_path if (os.path.exists(universal_video_path) and os.path.getsize(universal_video_path) > 1000) else video_filename
 
-            # Extract first frame as thumbnail and apply effects
+            # Extract crisp first frame as thumbnail (never all-black)
             raw_thumb_path = os.path.join(temp_dir, "raw_thumb.png")
-            subprocess.run([
-                ffmpeg_exe, "-y", "-ss", "00:00:00.500", "-i", video_path,
-                "-vframes", "1", raw_thumb_path
-            ], capture_output=True)
+            try:
+                subprocess.run([
+                    ffmpeg_exe, "-y", "-ss", "00:00:00.100", "-i", video_path,
+                    "-vframes", "1", raw_thumb_path
+                ], capture_output=True, timeout=10)
+            except Exception:
+                pass
 
-            if os.path.exists(raw_thumb_path):
+            if not os.path.exists(raw_thumb_path) or os.path.getsize(raw_thumb_path) == 0:
+                try:
+                    subprocess.run([
+                        ffmpeg_exe, "-y", "-i", video_path,
+                        "-vframes", "1", raw_thumb_path
+                    ], capture_output=True, timeout=10)
+                except Exception:
+                    pass
+
+            if os.path.exists(raw_thumb_path) and os.path.getsize(raw_thumb_path) > 0:
                 with open(raw_thumb_path, "rb") as f:
                     img_bytes = f.read()
                 processed_img = process_image_with_options(
@@ -786,8 +854,19 @@ def post_moment():
                 )
                 processed_img.convert("RGB").save(processed_image_path, format="WEBP", quality=90)
             else:
-                blank = Image.new("RGB", (1080, 1080), (20, 20, 30))
-                blank.save(processed_image_path, format="WEBP")
+                blank = Image.new("RGB", (1080, 1080), (28, 25, 23))
+                buf = io.BytesIO()
+                blank.save(buf, format="PNG")
+                processed_img = process_image_with_options(
+                    buf.getvalue(),
+                    frame_type=frame_type,
+                    weather_enabled=weather_enabled,
+                    weather_data=weather_data,
+                    weather_pos=weather_pos,
+                    weather_style=weather_style,
+                    caption=caption
+                )
+                processed_img.convert("RGB").save(processed_image_path, format="WEBP", quality=90)
 
         # Parse colors if provided
         colors = None

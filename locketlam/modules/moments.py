@@ -628,7 +628,7 @@ class MomentsModule:
                     pass
 
             # Choose preset: use 'veryfast' for very long clips (>180s) to encode quickly without timeout
-            enc_preset = "veryfast" if duration > 180 else "fast"
+            enc_preset = "ultrafast"
 
             if use_hevc:
                 # H.265 / HEVC: Keeps 100% original resolution with Apple 'hvc1' tag, halving file size
