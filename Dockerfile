@@ -16,9 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application source code
 COPY . .
 
-# Expose standard HTTP port
+# Expose standard HTTP ports (both 5050 and Render default 10000)
 ENV PORT=5050
-EXPOSE 5050
+EXPOSE 5050 10000
 
-# Run with production high-concurrency Gunicorn server for multiple users
-CMD ["sh", "-c", "gunicorn --workers 3 --threads 4 --timeout 180 --bind 0.0.0.0:${PORT:-5050} web_studio.server:app"]
+# Run Gunicorn binding to both 0.0.0.0:${PORT:-5050} and 0.0.0.0:10000 so Render routes traffic regardless of port config!
+# Workers set to 2 with 4 threads for optimal memory usage (< 400MB) within Render 512MB free tier limit.
+CMD ["sh", "-c", "gunicorn --workers 2 --threads 4 --timeout 180 --bind 0.0.0.0:${PORT:-5050} --bind 0.0.0.0:10000 web_studio.server:app"]
