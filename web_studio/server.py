@@ -611,7 +611,33 @@ def get_weather():
 
 def process_image_with_options(image_bytes: bytes, frame_type: str, weather_enabled: bool, weather_data: dict, weather_pos: str, weather_style: str, caption: str) -> Image.Image:
     """Takes raw image bytes and composites frame + weather card."""
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    except Exception as e_pil:
+        # Fallback for iOS HEIC / AVIF or unusual containers using FFmpeg
+        try:
+            import imageio_ffmpeg, subprocess, tempfile
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".raw") as tmp_in:
+                tmp_in.write(image_bytes)
+                tmp_in_path = tmp_in.name
+            tmp_out_path = tmp_in_path + ".png"
+            subprocess.run([ffmpeg_exe, "-y", "-i", tmp_in_path, tmp_out_path], capture_output=True, timeout=10)
+            if os.path.exists(tmp_out_path) and os.path.getsize(tmp_out_path) > 0:
+                img = Image.open(tmp_out_path).convert("RGBA")
+                try:
+                    os.remove(tmp_out_path)
+                except Exception:
+                    pass
+            else:
+                raise e_pil
+            if os.path.exists(tmp_in_path):
+                try:
+                    os.remove(tmp_in_path)
+                except Exception:
+                    pass
+        except Exception:
+            raise e_pil
     img = crop_to_square(img)
     if img.size != (1080, 1080):
         img = img.resize((1080, 1080), Image.Resampling.LANCZOS)
@@ -759,7 +785,7 @@ def post_moment():
             # 6. '-maxrate 1600k -bufsize 3200k': Guarantees output size < 5.5MB for 30s, preventing secondary re-compression.
             # 7. '-c:a aac -b:a 128k -ac 2 -ar 44100': Universal 2-channel 44.1kHz AAC stereo audio for ExoPlayer & AVPlayer.
             # 8. '-movflags +faststart': Puts moov atom at beginning of MP4 so videos stream instantly without black screen buffering!
-            vf_filter = "scale=720:720:force_original_aspect_ratio=increase:flags=bicubic,crop=720:720,setsar=1"
+            vf_filter = "fps=30,scale=720:720:force_original_aspect_ratio=increase:flags=bicubic,crop=720:720,setsar=1,format=yuv420p"
             cmd_transcode = [
                 ffmpeg_exe, "-y",
                 "-t", "30",
@@ -769,6 +795,10 @@ def post_moment():
                 "-profile:v", "baseline",
                 "-level", "3.1",
                 "-pix_fmt", "yuv420p",
+                "-colorspace", "bt709",
+                "-color_primaries", "bt709",
+                "-color_trc", "bt709",
+                "-avoid_negative_ts", "make_zero",
                 "-preset", "ultrafast",
                 "-crf", "26",
                 "-maxrate", "1600k",
@@ -792,7 +822,7 @@ def post_moment():
             # Fallback 480p transcode if primary 720p failed or timed out
             if not os.path.exists(universal_video_path) or os.path.getsize(universal_video_path) < 1000:
                 print("[FFmpeg] Primary transcode failed or empty, running fast 480p fallback...")
-                vf_fallback = "scale=480:480:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=480:480,setsar=1"
+                vf_fallback = "fps=30,scale=480:480:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=480:480,setsar=1,format=yuv420p"
                 cmd_fallback = [
                     ffmpeg_exe, "-y",
                     "-t", "30",
@@ -802,6 +832,10 @@ def post_moment():
                     "-profile:v", "baseline",
                     "-level", "3.1",
                     "-pix_fmt", "yuv420p",
+                    "-colorspace", "bt709",
+                    "-color_primaries", "bt709",
+                    "-color_trc", "bt709",
+                    "-avoid_negative_ts", "make_zero",
                     "-preset", "ultrafast",
                     "-crf", "28",
                     "-maxrate", "1200k",
@@ -824,8 +858,9 @@ def post_moment():
             # Extract crisp first frame as thumbnail (never all-black)
             raw_thumb_path = os.path.join(temp_dir, "raw_thumb.png")
             try:
+                # Capture frame at 0.5s to avoid initial black transition frame from camera/edit-list
                 subprocess.run([
-                    ffmpeg_exe, "-y", "-ss", "00:00:00.100", "-i", video_path,
+                    ffmpeg_exe, "-y", "-ss", "00:00:00.500", "-i", video_path,
                     "-vframes", "1", raw_thumb_path
                 ], capture_output=True, timeout=10)
             except Exception:
@@ -834,7 +869,25 @@ def post_moment():
             if not os.path.exists(raw_thumb_path) or os.path.getsize(raw_thumb_path) == 0:
                 try:
                     subprocess.run([
+                        ffmpeg_exe, "-y", "-ss", "00:00:00.100", "-i", video_path,
+                        "-vframes", "1", raw_thumb_path
+                    ], capture_output=True, timeout=10)
+                except Exception:
+                    pass
+
+            if not os.path.exists(raw_thumb_path) or os.path.getsize(raw_thumb_path) == 0:
+                try:
+                    subprocess.run([
                         ffmpeg_exe, "-y", "-i", video_path,
+                        "-vframes", "1", raw_thumb_path
+                    ], capture_output=True, timeout=10)
+                except Exception:
+                    pass
+
+            if not os.path.exists(raw_thumb_path) or os.path.getsize(raw_thumb_path) == 0:
+                try:
+                    subprocess.run([
+                        ffmpeg_exe, "-y", "-ss", "00:00:00.000", "-i", video_filename,
                         "-vframes", "1", raw_thumb_path
                     ], capture_output=True, timeout=10)
                 except Exception:
@@ -902,6 +955,7 @@ def post_moment():
                 "payload": result.get("payload"),
                 "analytics": result.get("analytics") or c.device.analytics_data,
                 "thumbnail_url": result.get("thumbnail_url"),
+                "image_url": result.get("thumbnail_url"),
                 "video_url": result.get("video_url")
             })
 

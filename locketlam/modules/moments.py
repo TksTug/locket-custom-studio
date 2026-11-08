@@ -1013,6 +1013,7 @@ class MomentsModule:
 
         payload = {
             "thumbnail_url": thumb_url,
+            "image_url": thumb_url,
             "overlays": overlays,
             "sent_to_self_only": is_private,
             "sent_to_all": not is_private and not recipients,
@@ -1035,6 +1036,7 @@ class MomentsModule:
                 "needs_client_dispatch": True,
                 "payload": payload,
                 "thumbnail_url": thumb_url,
+            "image_url": thumb_url,
                 "video_url": video_url,
                 "caption": caption,
                 "token": self.client.session.get_valid_token(),
@@ -1051,6 +1053,7 @@ class MomentsModule:
                 "moment_uid": data_res.get("canonical_uid") or data_res.get("id"),
                 "canonical_uid": data_res.get("canonical_uid") or data_res.get("id"),
                 "thumbnail_url": thumb_url,
+            "image_url": thumb_url,
                 "video_url": video_url,
                 "caption": caption or "",
                 "created_at": datetime.utcnow().isoformat() + "Z" if "datetime" in globals() else str(int(time.time()))

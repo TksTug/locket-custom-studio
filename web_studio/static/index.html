@@ -386,7 +386,7 @@
         <div id="cameraSquircle" class="locket-squircle relative flex items-center justify-center mx-auto cursor-pointer" onclick="handleSquircleClick(event)" ondblclick="flipCameraOrientation()">
           
           <!-- Live Real Camera Stream -->
-          <video id="cameraLiveStream" autoplay playsinline muted class="w-full h-full object-cover filter-none transition-all duration-300"></video>
+          <video id="cameraLiveStream" autoplay playsinline webkit-playsinline muted class="w-full h-full object-cover filter-none transition-all duration-300"></video>
 
           <!-- Freeze Captured Photo Preview -->
           <img id="cameraPreviewImage" class="w-full h-full object-cover hidden filter-none transition-all duration-300" alt="Captured Moment">
@@ -1607,6 +1607,8 @@
         cameraStream.getTracks().forEach(track => track.stop());
       }
       try {
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
         cameraStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: cameraFacing,
@@ -1616,6 +1618,7 @@
           audio: false
         });
         video.srcObject = cameraStream;
+        await video.play().catch(e => console.warn('Camera play warning:', e));
         updateCameraMirrorTransform();
       } catch (err) {
         console.warn('Camera access error:', err);
@@ -1713,6 +1716,12 @@
       const previewImg = document.getElementById('cameraPreviewImage');
       const flashOverlay = document.getElementById('flashOverlay');
 
+      // Prevent blank black capture on iPhone / mobile Safari before camera stream finishes initialization
+      if (!video || video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < 2) {
+        showToast("Camera đang khởi động, vui lòng đợi 1 giây rồi bấm chụp lại!", "warning");
+        return;
+      }
+
       // 1. Flash Handling: If Flash ON, illuminate with high brightness
       const isFlashActive = (flashMode === 'on');
       if (isFlashActive) {
@@ -1793,13 +1802,13 @@
       const file = event.target.files[0];
       if (!file) return;
 
-      capturedBlob = file;
       isVideoMedia = (file.type && file.type.startsWith('video/')) || 
                      /\.(mp4|mov|m4v|3gp|webm|avi|mkv|quicktime)$/i.test(file.name || '');
       const previewImg = document.getElementById('cameraPreviewImage');
       const previewVid = document.getElementById('cameraPreviewVideo');
 
       if (isVideoMedia) {
+        capturedBlob = file;
         previewImg.classList.add('hidden');
         previewVid.classList.remove('hidden');
         previewVid.src = URL.createObjectURL(file);
@@ -1812,15 +1821,41 @@
         if (file.size > 50 * 1024 * 1024) {
           showToast(`Video lớn (${sizeMB} MB). Sẽ mất chút thời gian để gửi & nén chuẩn...`, "info");
         }
+        enterPostCaptureState();
       } else {
         if (previewVid) {
           previewVid.pause();
           previewVid.classList.add('hidden');
         }
         previewImg.classList.remove('hidden');
-        previewImg.src = URL.createObjectURL(file);
+
+        // Safely normalize any image (including iPhone HEIC / HEIF / WebP) to standard JPEG Blob
+        try {
+          const img = new Image();
+          const objectUrl = URL.createObjectURL(file);
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width || 1080;
+            canvas.height = img.naturalHeight || img.height || 1080;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((b) => {
+              capturedBlob = b || file;
+              previewImg.src = URL.createObjectURL(capturedBlob);
+              URL.revokeObjectURL(objectUrl);
+            }, 'image/jpeg', 0.95);
+          };
+          img.onerror = () => {
+            capturedBlob = file;
+            previewImg.src = objectUrl;
+          };
+          img.src = objectUrl;
+        } catch (_) {
+          capturedBlob = file;
+          previewImg.src = URL.createObjectURL(file);
+        }
+        enterPostCaptureState();
       }
-      enterPostCaptureState();
       try { event.target.value = ''; } catch (_) {}
     }
 
@@ -2105,6 +2140,9 @@
             const directBody = {
               data: {
                 ...data.payload,
+                thumbnail_url: data.thumbnail_url || (data.payload && data.payload.thumbnail_url),
+                image_url: data.image_url || data.thumbnail_url || (data.payload && (data.payload.image_url || data.payload.thumbnail_url)),
+                video_url: data.video_url || (data.payload && data.payload.video_url),
                 analytics: data.analytics || {
                   platform: "ios",
                   installation_id: "locket_gold_web",
